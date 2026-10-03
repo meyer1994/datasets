@@ -83,7 +83,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\n  WHERE record_type = 'index'\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker, description,\n  closing_price::DOUBLE AS closing_price,\n  oscillation::DOUBLE AS oscillation,\n  rising_shares, falling_shares, stable_shares\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY ticker"
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\n  WHERE record_type = 'index'\n    AND ticker IN ($index)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker, description,\n  closing_price::DOUBLE AS closing_price,\n  oscillation::DOUBLE AS oscillation,\n  rising_shares, falling_shares, stable_shares\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY ticker"
         }
       ]
     }

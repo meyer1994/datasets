@@ -84,11 +84,15 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1 }
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
         },
         "overrides": []
       },
-      "options": { "legend": { "showLegend": false } },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
       "targets": [
         {
           "refId": "A",
@@ -96,7 +100,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, sum(regular_trades)::BIGINT AS trades\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY time\nORDER BY time"
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, ticker, sum(regular_trades)::BIGINT AS trades\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, ticker"
         }
       ]
     },

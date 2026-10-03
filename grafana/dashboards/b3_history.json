@@ -52,7 +52,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT sum(voltot) AS volume\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
+          "rawSql": "SELECT sum(voltot) AS volume\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND $__timeFilter(dtpreg::TIMESTAMP)"
         }
       ]
     },
@@ -71,7 +71,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT sum(totneg)::BIGINT AS trades\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
+          "rawSql": "SELECT sum(totneg)::BIGINT AS trades\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND $__timeFilter(dtpreg::TIMESTAMP)"
         }
       ]
     },
@@ -90,7 +90,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT count(DISTINCT codneg) AS instruments\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
+          "rawSql": "SELECT count(DISTINCT codneg) AS instruments\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND $__timeFilter(dtpreg::TIMESTAMP)"
         }
       ]
     },
@@ -109,7 +109,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT count(DISTINCT dtpreg) AS days\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
+          "rawSql": "SELECT count(DISTINCT dtpreg) AS days\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND $__timeFilter(dtpreg::TIMESTAMP)"
         }
       ]
     },
@@ -169,7 +169,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT\n  dtpreg::TIMESTAMP AS time,\n  sum(voltot) FILTER (WHERE tpmerc = '010') AS \"Cash\",\n  sum(voltot) FILTER (WHERE tpmerc = '020') AS \"Odd lot\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('070', '080')) AS \"Options\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('012', '013')) AS \"Option exercise\",\n  sum(voltot) FILTER (WHERE tpmerc = '030') AS \"Forward\",\n  sum(voltot) FILTER (WHERE tpmerc = '017') AS \"Auction\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('050', '060')) AS \"Futures\"\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY time\nORDER BY time"
+          "rawSql": "SELECT\n  dtpreg::TIMESTAMP AS time,\n  sum(voltot) FILTER (WHERE tpmerc = '010') AS \"Cash\",\n  sum(voltot) FILTER (WHERE tpmerc = '020') AS \"Odd lot\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('070', '080')) AS \"Options\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('012', '013')) AS \"Option exercise\",\n  sum(voltot) FILTER (WHERE tpmerc = '030') AS \"Forward\",\n  sum(voltot) FILTER (WHERE tpmerc = '017') AS \"Auction\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('050', '060')) AS \"Futures\"\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY time\nORDER BY time"
         }
       ]
     },
