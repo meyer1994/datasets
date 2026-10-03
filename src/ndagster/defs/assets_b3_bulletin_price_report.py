@@ -117,8 +117,8 @@ def output_metadata(df: pl.DataFrame) -> dict[str, dg.MetadataValue]:
     ),
     io_manager_key="io_manager_raw",
     retry_policy=dg.RetryPolicy(
-        delay=600,
-        max_retries=6,
+        delay=60,
+        max_retries=3,
     ),
 )
 def daily_download(context: dg.AssetExecutionContext) -> bytes:
