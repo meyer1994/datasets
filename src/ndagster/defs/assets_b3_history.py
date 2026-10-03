@@ -100,7 +100,9 @@ def output_metadata(df: pl.DataFrame) -> dict[str, dg.MetadataValue]:
 
 
 @dg.asset(
-    key=["b3_history", "daily", "download"],
+    key_prefix=["b3_history"],
+    name="daily_download",
+    group_name="b3_history",
     partitions_def=dg.TimeWindowPartitionsDefinition(
         start="2025-01-01",
         timezone="America/Sao_Paulo",
@@ -132,8 +134,10 @@ def daily_download(context: dg.AssetExecutionContext) -> bytes:
 
 
 @dg.asset(
-    key=["b3_history", "daily", "parse"],
-    ins={"daily_download": dg.AssetIn(key=["b3_history", "daily", "download"])},
+    key_prefix=["b3_history"],
+    name="daily_parse",
+    ins={"daily_download": dg.AssetIn(key=["b3_history", "daily_download"])},
+    group_name="b3_history",
     partitions_def=dg.TimeWindowPartitionsDefinition(
         start="2025-01-01",
         timezone="America/Sao_Paulo",
@@ -168,7 +172,9 @@ def daily_parse(
 
 
 @dg.asset(
-    key=["b3_history", "monthly", "download"],
+    key_prefix=["b3_history"],
+    name="monthly_download",
+    group_name="b3_history",
     partitions_def=dg.TimeWindowPartitionsDefinition(
         start="2025-01",
         timezone="America/Sao_Paulo",
@@ -200,8 +206,10 @@ def monthly_download(context: dg.AssetExecutionContext) -> bytes:
 
 
 @dg.asset(
-    key=["b3_history", "monthly", "parse"],
-    ins={"monthly_download": dg.AssetIn(key=["b3_history", "monthly", "download"])},
+    key_prefix=["b3_history"],
+    name="monthly_parse",
+    ins={"monthly_download": dg.AssetIn(key=["b3_history", "monthly_download"])},
+    group_name="b3_history",
     partitions_def=dg.TimeWindowPartitionsDefinition(
         start="2025-01",
         timezone="America/Sao_Paulo",
@@ -236,7 +244,9 @@ def monthly_parse(
 
 
 @dg.asset(
-    key=["b3_history", "yearly", "download"],
+    key_prefix=["b3_history"],
+    name="yearly_download",
+    group_name="b3_history",
     partitions_def=dg.TimeWindowPartitionsDefinition(
         start="2025",
         timezone="America/Sao_Paulo",
@@ -268,8 +278,10 @@ def yearly_download(context: dg.AssetExecutionContext) -> bytes:
 
 
 @dg.asset(
-    key=["b3_history", "yearly", "parse"],
-    ins={"yearly_download": dg.AssetIn(key=["b3_history", "yearly", "download"])},
+    key_prefix=["b3_history"],
+    name="yearly_parse",
+    ins={"yearly_download": dg.AssetIn(key=["b3_history", "yearly_download"])},
+    group_name="b3_history",
     partitions_def=dg.TimeWindowPartitionsDefinition(
         start="2025",
         timezone="America/Sao_Paulo",
