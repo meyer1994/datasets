@@ -63,6 +63,27 @@ def database():
         yield conn
 
 
+def output_metadata(df: pd.DataFrame) -> dict[str, dg.MetadataValue]:
+    top_volume = (
+        df.groupby(["codneg", "nomres"], as_index=False)["voltot"]
+        .sum()
+        .nlargest(10, "voltot")
+    )
+
+    return {
+        "total_rows": dg.MetadataValue.int(len(df)),
+        "avg_price": dg.MetadataValue.float(float(df["premed"].mean())),
+        "total_trades": dg.MetadataValue.int(int(df["totneg"].sum())),
+        "total_volume": dg.MetadataValue.float(float(df["voltot"].sum())),
+        "preview": dg.MetadataValue.md(
+            df.head(10).to_markdown(index=False, disable_numparse=True)
+        ),
+        "top_volume": dg.MetadataValue.md(
+            top_volume.to_markdown(index=False, floatfmt=",.2f")
+        ),
+    }
+
+
 @dg.asset(
     partitions_def=dg.TimeWindowPartitionsDefinition(
         start="2026-09-01",
@@ -85,6 +106,7 @@ def daily(context: dg.AssetExecutionContext) -> pd.DataFrame:
     context.log.debug("Loaded %d rows", len(df))
     context.log.debug("Columns: %s", df.columns)
     context.log.debug("Dtypes: %s", df.dtypes)
+    context.add_output_metadata(output_metadata(df))
 
     return df
 
@@ -111,6 +133,7 @@ def monthly(context: dg.AssetExecutionContext) -> pd.DataFrame:
     context.log.debug("Loaded %d rows", len(df))
     context.log.debug("Columns: %s", df.columns)
     context.log.debug("Dtypes: %s", df.dtypes)
+    context.add_output_metadata(output_metadata(df))
 
     return df
 
@@ -137,5 +160,6 @@ def yearly(context: dg.AssetExecutionContext) -> pd.DataFrame:
     context.log.debug("Loaded %d rows", len(df))
     context.log.debug("Columns: %s", df.columns)
     context.log.debug("Dtypes: %s", df.dtypes)
+    context.add_output_metadata(output_metadata(df))
 
     return df
