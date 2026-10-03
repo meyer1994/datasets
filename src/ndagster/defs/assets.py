@@ -82,10 +82,9 @@ def daily(context: dg.AssetExecutionContext) -> pd.DataFrame:
     with database() as conn:
         df = conn.sql(COTAHIST_QUERY, params={"source": url}).df()
 
-    context.log.info("Loaded %d rows", len(df))
-    context.log.info("Columns: %s", df.columns)
-    context.log.info("Dtypes: %s", df.dtypes)
-    context.log.info("Data:\n%s", df.head(5))
+    context.log.debug("Loaded %d rows", len(df))
+    context.log.debug("Columns: %s", df.columns)
+    context.log.debug("Dtypes: %s", df.dtypes)
 
     return df
 
@@ -109,10 +108,9 @@ def monthly(context: dg.AssetExecutionContext) -> pd.DataFrame:
     with database() as conn:
         df = conn.sql(COTAHIST_QUERY, params={"source": url}).df()
 
-    context.log.info("Loaded %d rows", len(df))
-    context.log.info("Columns: %s", df.columns)
-    context.log.info("Dtypes: %s", df.dtypes)
-    context.log.info("Data:\n%s", df.head(5))
+    context.log.debug("Loaded %d rows", len(df))
+    context.log.debug("Columns: %s", df.columns)
+    context.log.debug("Dtypes: %s", df.dtypes)
 
     return df
 
@@ -136,9 +134,8 @@ def yearly(context: dg.AssetExecutionContext) -> pd.DataFrame:
     with database() as conn:
         df = conn.sql(COTAHIST_QUERY, params={"source": url}).df()
 
-    context.log.info("Loaded %d rows", len(df))
-    context.log.info("Columns: %s", df.columns)
-    context.log.info("Dtypes: %s", df.dtypes)
-    context.log.info("Data:\n%s", df.head(5))
+    context.log.debug("Loaded %d rows", len(df))
+    context.log.debug("Columns: %s", df.columns)
+    context.log.debug("Dtypes: %s", df.dtypes)
 
     return df
