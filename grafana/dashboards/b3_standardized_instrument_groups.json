@@ -1,0 +1,176 @@
+{
+  "uid": "b3-standardized-instrument-groups",
+  "title": "B3 - Standardized Instrument Groups",
+  "tags": ["b3"],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": { "from": "now-30d/d", "to": "now/d" },
+  "timepicker": {
+    "refresh_intervals": [],
+    "quick_ranges": [
+      { "display": "Today", "from": "now/d", "to": "now/d" },
+      { "display": "Last 7 days", "from": "now-7d/d", "to": "now/d" },
+      { "display": "Last 30 days", "from": "now-30d/d", "to": "now/d" },
+      { "display": "Last 90 days", "from": "now-90d/d", "to": "now/d" },
+      { "display": "Last 6 months", "from": "now-6M/d", "to": "now/d" },
+      { "display": "Last 1 year", "from": "now-1y/d", "to": "now/d" },
+      { "display": "Last 2 years", "from": "now-2y/d", "to": "now/d" },
+      { "display": "Month to date", "from": "now/M", "to": "now/d" },
+      { "display": "Year to date", "from": "now/y", "to": "now/d" }
+    ]
+  },
+  "refresh": "",
+  "templating": {
+    "list": [
+      {
+        "name": "group",
+        "label": "Group",
+        "type": "query",
+        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+        "query": "SELECT group_id::VARCHAR AS group_id\nFROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY 1\nORDER BY count(*) DESC, 1",
+        "definition": "SELECT group_id::VARCHAR AS group_id\nFROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY 1\nORDER BY count(*) DESC, 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": false,
+        "current": { "selected": true, "text": ["7380"], "value": ["7380"] },
+        "sort": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Selected groups (latest day in range)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 9 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "vertical",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(*)::BIGINT AS instruments,\n  count(DISTINCT group_id)::BIGINT AS group_count\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Instruments per group per day",
+      "gridPos": { "x": 6, "y": 0, "w": 18, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.group_id}",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 0, "showPoints": "always", "pointSize": 4 }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["group_id"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, group_id::VARCHAR AS group_id, count(*)::BIGINT AS instruments\nFROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\nWHERE group_id::VARCHAR IN ($group)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, group_id"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Largest groups (latest day in range)",
+      "gridPos": { "x": 0, "y": 9, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "change" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-text" } }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "text", "value": 0 }, { "color": "green", "value": 1 }] } }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\nb AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM d\n),\ns AS (\n  SELECT group_id,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = last_day), 0) AS instruments,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = first_day), 0) AS instruments_at_start\n  FROM d CROSS JOIN b\n  GROUP BY group_id\n)\nSELECT group_id::VARCHAR AS group_id,\n  instruments::BIGINT AS instruments,\n  instruments_at_start::BIGINT AS instruments_at_start,\n  (instruments - instruments_at_start)::BIGINT AS change\nFROM s\nORDER BY instruments DESC, group_id\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Biggest group size changes (first vs latest day in range)",
+      "gridPos": { "x": 12, "y": 9, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "change" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-text" } }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "text", "value": 0 }, { "color": "green", "value": 1 }] } }] },
+          { "matcher": { "id": "byName", "options": "change_pct" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 1 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\nb AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM d\n),\ns AS (\n  SELECT group_id,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = last_day), 0) AS instruments,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = first_day), 0) AS instruments_at_start\n  FROM d CROSS JOIN b\n  GROUP BY group_id\n)\nSELECT group_id::VARCHAR AS group_id,\n  instruments_at_start::BIGINT AS instruments_at_start,\n  instruments::BIGINT AS instruments,\n  (instruments - instruments_at_start)::BIGINT AS change,\n  ((instruments - instruments_at_start) / nullif(instruments_at_start, 0))::DOUBLE AS change_pct\nFROM s\nWHERE instruments <> instruments_at_start\nORDER BY abs(instruments - instruments_at_start) DESC, group_id\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Instruments added/removed in selected groups (within range)",
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "status" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-text" } }, { "id": "mappings", "value": [{ "type": "value", "options": { "added": { "color": "green", "index": 0 }, "removed": { "color": "red", "index": 1 } } }] }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\nb AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM d\n),\ns AS (\n  SELECT instrument_id, group_id,\n    min(trad_dt) AS first_seen,\n    max(trad_dt) AS last_seen,\n    count(*) AS sessions,\n    any_value(first_day) AS first_day,\n    any_value(last_day) AS last_day\n  FROM d CROSS JOIN b\n  GROUP BY instrument_id, group_id\n)\nSELECT instrument_id::VARCHAR AS instrument_id,\n  group_id::VARCHAR AS group_id,\n  CASE WHEN last_seen < last_day THEN 'removed' ELSE 'added' END AS status,\n  strftime(first_seen, '%Y-%m-%d') AS first_seen,\n  strftime(last_seen, '%Y-%m-%d') AS last_seen,\n  sessions::BIGINT AS sessions\nFROM s\nWHERE first_seen > first_day OR last_seen < last_day\nORDER BY CASE WHEN last_seen < last_day THEN last_seen ELSE first_seen END DESC, group_id, instrument_id\nLIMIT 2000"
+        }
+      ]
+    }
+  ]
+}
