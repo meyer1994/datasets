@@ -1,0 +1,21 @@
+# Grafana with the MotherDuck DuckDB datasource plugin.
+# The plugin links against glibc, so the Ubuntu-based Grafana image is required.
+ARG GRAFANA_VERSION=latest-ubuntu
+ARG DUCKDB_PLUGIN_VERSION=0.4.5
+
+FROM alpine:3 AS plugin
+ARG DUCKDB_PLUGIN_VERSION
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+ADD https://github.com/motherduckdb/grafana-duckdb-datasource/releases/download/v${DUCKDB_PLUGIN_VERSION}/motherduck-duckdb-datasource-${DUCKDB_PLUGIN_VERSION}.zip /tmp/plugin.zip
+RUN unzip -q /tmp/plugin.zip -d /plugins \
+    && find /plugins/motherduck-duckdb-datasource -name 'gpx_duckdb_datasource_*' \
+        ! -name "gpx_duckdb_datasource_${TARGETOS}_${TARGETARCH}" -delete
+
+FROM grafana/grafana:${GRAFANA_VERSION}
+
+ENV GF_PATHS_PLUGINS=/opt/grafana-plugins \
+    GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=motherduck-duckdb-datasource
+
+COPY --from=plugin --chown=472:0 /plugins /opt/grafana-plugins
