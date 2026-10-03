@@ -1,0 +1,243 @@
+{
+  "uid": "b3-history",
+  "title": "B3 Historical Quotes (COTAHIST)",
+  "tags": ["b3"],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "schemaVersion": 39,
+  "time": { "from": "now-30d", "to": "now" },
+  "refresh": "",
+  "templating": {
+    "list": [
+      {
+        "name": "source",
+        "label": "Source",
+        "type": "custom",
+        "query": "Daily : daily_parse,Monthly : monthly_parse,Yearly : yearly_parse",
+        "current": { "text": "Daily", "value": "daily_parse" },
+        "multi": false,
+        "includeAll": false
+      },
+      {
+        "name": "ticker",
+        "label": "Ticker",
+        "type": "custom",
+        "query": "PETR4,VALE3,ITUB4,BBDC4,BBAS3,ABEV3,WEGE3,BOVA11",
+        "current": { "text": "PETR4", "value": "PETR4" },
+        "multi": false,
+        "includeAll": false,
+        "allowCustomValue": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total volume",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "currencyBRL", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT sum(voltot) AS volume\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total trades",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT sum(totneg) AS trades\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Instruments traded",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT count(DISTINCT codneg) AS instruments\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Trading days",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT count(DISTINCT dtpreg) AS days\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "candlestick",
+      "title": "$ticker daily candles (cash market)",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "currencyBRL" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "volume" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] }
+        ]
+      },
+      "options": {
+        "mode": "candles+volume",
+        "candleStyle": "candles",
+        "colorStrategy": "open-close",
+        "includeAllFields": false,
+        "legend": { "showLegend": false }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  dtpreg::TIMESTAMP AS time,\n  preabe AS open,\n  premax AS high,\n  premin AS low,\n  preult AS close,\n  voltot AS volume\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE codneg = '$ticker'\n  AND tpmerc = '010'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Daily volume by market",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 9 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyBRL",
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  dtpreg::TIMESTAMP AS time,\n  sum(voltot) FILTER (WHERE tpmerc = '010') AS \"Cash\",\n  sum(voltot) FILTER (WHERE tpmerc = '020') AS \"Odd lot\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('070', '080')) AS \"Options\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('012', '013')) AS \"Option exercise\",\n  sum(voltot) FILTER (WHERE tpmerc = '030') AS \"Forward\",\n  sum(voltot) FILTER (WHERE tpmerc = '017') AS \"Auction\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('050', '060')) AS \"Futures\"\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY time\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Top 20 by volume (cash market, range)",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "volume" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+          { "matcher": { "id": "byName", "options": "first_close" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+          { "matcher": { "id": "byName", "options": "last_close" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+          { "matcher": { "id": "byName", "options": "period_return" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  codneg AS ticker,\n  any_value(nomres) AS name,\n  any_value(especi) AS spec,\n  sum(totneg) AS trades,\n  sum(voltot) AS volume,\n  arg_min(preult, dtpreg) AS first_close,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE tpmerc = '010'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nORDER BY volume DESC\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Top gainers (standard lot, avg R$ 1M/day)",
+      "gridPos": { "x": 12, "y": 23, "w": 6, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "last_close" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+          { "matcher": { "id": "byName", "options": "period_return" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  codneg AS ticker,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE tpmerc = '010'\n  AND codbdi = '02'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nHAVING avg(voltot) >= 1000000\nORDER BY period_return DESC\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Top losers (standard lot, avg R$ 1M/day)",
+      "gridPos": { "x": 18, "y": 23, "w": 6, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "last_close" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+          { "matcher": { "id": "byName", "options": "period_return" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  codneg AS ticker,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE tpmerc = '010'\n  AND codbdi = '02'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nHAVING avg(voltot) >= 1000000\nORDER BY period_return ASC\nLIMIT 15"
+        }
+      ]
+    }
+  ]
+}

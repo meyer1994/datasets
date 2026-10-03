@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: ndagster
+    folder: B3
+    type: file
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards

@@ -1,0 +1,48 @@
+apiVersion: 1
+
+datasources:
+  - name: DuckDB
+    uid: duckdb-minio
+    type: motherduck-duckdb-datasource
+    isDefault: true
+    jsonData:
+      path: ""
+      # Table macros take the parquet globs as defaults so they bind lazily:
+      # a missing dataset must not break the connection.
+      initSql: >-
+        SET home_directory = '/var/lib/grafana';
+        INSTALL httpfs;
+        LOAD httpfs;
+        CREATE OR REPLACE SECRET minio (
+          TYPE s3,
+          KEY_ID '${AWS_ACCESS_KEY_ID}',
+          SECRET '${AWS_SECRET_ACCESS_KEY}',
+          ENDPOINT 'minio:9000',
+          URL_STYLE 'path',
+          USE_SSL false
+        );
+        CREATE OR REPLACE MACRO market_type(code) AS CASE code
+          WHEN '010' THEN 'Spot'
+          WHEN '012' THEN 'Call exercise'
+          WHEN '013' THEN 'Put exercise'
+          WHEN '017' THEN 'Auction'
+          WHEN '020' THEN 'Odd lot'
+          WHEN '030' THEN 'Forward'
+          WHEN '050' THEN 'Future (gain retention)'
+          WHEN '060' THEN 'Future (continuous)'
+          WHEN '070' THEN 'Call option'
+          WHEN '080' THEN 'Put option'
+          ELSE coalesce('Code ' || code, 'Other')
+        END;
+        CREATE OR REPLACE MACRO price_report(
+          price_report_files := 's3://uploads/b3_bulletin_price_report/daily_parse/*.parquet',
+          history_files := 's3://uploads/b3_history/daily_parse/*.parquet'
+        ) AS TABLE
+        SELECT p.*, market_type(h.tpmerc) AS market_type
+        FROM read_parquet(price_report_files) p
+        LEFT JOIN (
+          SELECT dtpreg, codneg, any_value(tpmerc) AS tpmerc
+          FROM read_parquet(history_files)
+          WHERE tipreg = '01'
+          GROUP BY ALL
+        ) h ON h.dtpreg = p.trad_dt AND h.codneg = p.ticker;

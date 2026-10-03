@@ -1,0 +1,166 @@
+{
+  "uid": "b3-bulletins",
+  "title": "B3 Daily Bulletins",
+  "tags": ["b3"],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "schemaVersion": 39,
+  "time": { "from": "now-7d", "to": "now" },
+  "refresh": "",
+  "templating": {
+    "list": [
+      {
+        "name": "market",
+        "label": "Market",
+        "type": "query",
+        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+        "query": "SELECT DISTINCT market_type FROM price_report() WHERE $__timeFilter(trad_dt::TIMESTAMP) ORDER BY 1",
+        "definition": "SELECT DISTINCT market_type FROM price_report() WHERE $__timeFilter(trad_dt::TIMESTAMP) ORDER BY 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "'__all'",
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
+        "sort": 0
+      },
+      {
+        "name": "ticker",
+        "label": "Ticker",
+        "type": "query",
+        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+        "query": "SELECT DISTINCT ticker FROM price_report() WHERE $__timeFilter(trad_dt::TIMESTAMP) AND trades > 0 AND ('__all' IN ($market) OR market_type IN ($market)) ORDER BY 1",
+        "definition": "SELECT DISTINCT ticker FROM price_report() WHERE $__timeFilter(trad_dt::TIMESTAMP) AND trades > 0 AND ('__all' IN ($market) OR market_type IN ($market)) ORDER BY 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "'__all'",
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
+        "sort": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Ibovespa close",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0 }, "overrides": [] },
+      "options": { "legend": { "showLegend": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, closing_price::DOUBLE AS \"IBOV\"\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE record_type = 'index'\n  AND ticker = 'IBOV'\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Last price (top 10 by volume)",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "none", "displayName": "${__field.labels.ticker}" }, "overrides": [] },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" } },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, ticker, last_price, volume_brl\n  FROM price_report()\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND last_price IS NOT NULL\n    AND ('__all' IN ($market) OR market_type IN ($market))\n    AND ('__all' IN ($ticker) OR ticker IN ($ticker))\n),\ntop AS (\n  SELECT ticker FROM d GROUP BY ticker ORDER BY sum(volume_brl) DESC NULLS LAST LIMIT 10\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, arg_max(last_price, volume_brl)::DOUBLE AS last_price\nFROM d\nWHERE ticker IN (SELECT ticker FROM top)\nGROUP BY ALL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Traded volume by market (BRL)",
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyBRL",
+          "displayName": "${__field.labels.market_type}",
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" } },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["market_type"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, market_type, sum(volume_brl)::DOUBLE AS volume_brl\nFROM price_report()\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND ('__all' IN ($market) OR market_type IN ($market))\n  AND ('__all' IN ($ticker) OR ticker IN ($ticker))\nGROUP BY ALL\nORDER BY time, market_type"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Top 15 instruments by volume (latest day in range)",
+      "gridPos": { "x": 0, "y": 16, "w": 14, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "volume_brl" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+          { "matcher": { "id": "byName", "options": "oscillation_pct" }, "properties": [{ "id": "unit", "value": "percent" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM price_report()\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($market) OR market_type IN ($market))\n    AND ('__all' IN ($ticker) OR ticker IN ($ticker))\n)\nSELECT trad_dt, ticker, market_type, trades,\n  last_price::DOUBLE AS last_price,\n  oscillation_pct::DOUBLE AS oscillation_pct,\n  volume_brl::DOUBLE AS volume_brl\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY volume_brl DESC NULLS LAST\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Indexes (latest day in range)",
+      "gridPos": { "x": 14, "y": 16, "w": 10, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "oscillation" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\n  WHERE record_type = 'index'\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker, description,\n  closing_price::DOUBLE AS closing_price,\n  oscillation::DOUBLE AS oscillation,\n  rising_shares, falling_shares, stable_shares\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY ticker"
+        }
+      ]
+    }
+  ]
+}
