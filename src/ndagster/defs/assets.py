@@ -1,7 +1,10 @@
 import contextlib
+import tempfile
+from pathlib import Path
 
 import dagster as dg
 import duckdb
+import httpx2
 import polars as pl
 
 COTAHIST_QUERY = r"""
@@ -103,17 +106,56 @@ def output_metadata(df: pl.DataFrame) -> dict[str, dg.MetadataValue]:
         cron_schedule="0 0 * * 1-5",
         fmt=r"%Y-%m-%d",
     ),
+    io_manager_key="io_manager_raw",
     retry_policy=dg.RetryPolicy(
         delay=600,
         max_retries=6,
     ),
 )
-def daily(context: dg.AssetExecutionContext) -> pl.DataFrame:
+def daily_download(context: dg.AssetExecutionContext) -> bytes:
     date = context.partition_time_window.start.strftime(r"%d%m%Y")
-    url = f"zip://https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_D{date}.zip/COTAHIST_D{date}.TXT"
+    url = f"https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_D{date}.zip"
 
-    with database() as conn:
-        df = conn.sql(COTAHIST_QUERY, params={"source": url}).pl()
+    with httpx2.Client(follow_redirects=True, timeout=60) as client:
+        response = client.get(url)
+        response.raise_for_status()
+
+    context.add_output_metadata(
+        {
+            "url": dg.MetadataValue.url(url),
+            "size_bytes": dg.MetadataValue.int(len(response.content)),
+            "response_content_type": response.headers.get("content-type", ""),
+        }
+    )
+    return response.content
+
+
+@dg.asset(
+    partitions_def=dg.TimeWindowPartitionsDefinition(
+        start="2025-01-01",
+        timezone="America/Sao_Paulo",
+        cron_schedule="0 0 * * 1-5",
+        fmt=r"%Y-%m-%d",
+    ),
+    io_manager_key="io_manager_parquet",
+    automation_condition=(
+        dg.AutomationCondition.any_deps_updated().since_last_handled()
+        & ~dg.AutomationCondition.any_deps_in_progress()
+        & ~dg.AutomationCondition.in_progress()
+    ),
+)
+def daily_parse(
+    context: dg.AssetExecutionContext, daily_download: bytes
+) -> pl.DataFrame:
+    date = context.partition_time_window.start.strftime(r"%d%m%Y")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / f"COTAHIST_D{date}.zip"
+        path.write_bytes(daily_download)
+
+        with database() as conn:
+            source = f"zip://{path}/COTAHIST_D{date}.TXT"
+            df = conn.sql(COTAHIST_QUERY, params={"source": source}).pl()
 
     context.log.debug("Loaded %d rows", df.height)
     context.log.debug("Schema: %s", df.schema)
@@ -129,6 +171,7 @@ def daily(context: dg.AssetExecutionContext) -> pl.DataFrame:
         cron_schedule="0 0 1 * *",
         fmt=r"%Y-%m",
     ),
+    io_manager_key="io_manager_parquet",
     retry_policy=dg.RetryPolicy(
         delay=3600,
         max_retries=6,
@@ -155,6 +198,7 @@ def monthly(context: dg.AssetExecutionContext) -> pl.DataFrame:
         cron_schedule="0 0 1 1 *",
         fmt=r"%Y",
     ),
+    io_manager_key="io_manager_parquet",
     retry_policy=dg.RetryPolicy(
         delay=3600,
         max_retries=6,
