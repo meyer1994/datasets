@@ -447,5 +447,11 @@ nohup.out
 # B3 COTAHIST data files
 COTAHIST_*
 
+# B3 bulletin price report data files
+BVBG.086.01_*.xml
+PR[0-9][0-9][0-9][0-9][0-9][0-9].zip
+pesquisa-pregao.zip
+*.duckdb
+
 # Parquet IO manager output
 data/
