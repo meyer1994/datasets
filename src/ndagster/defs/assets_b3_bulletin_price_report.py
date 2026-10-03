@@ -10,8 +10,6 @@ import polars as pl
 
 from ndagster.defs.assets_b3_history import to_markdown
 
-PRICE_REPORT_URL = "https://example.com/b3/price-report/PR{date}.zip"
-
 PRICE_REPORT_QUERY = r"""
 SELECT
     TradDt.Dt::DATE                                    AS trad_dt,
@@ -125,7 +123,7 @@ def output_metadata(df: pl.DataFrame) -> dict[str, dg.MetadataValue]:
 )
 def daily_download(context: dg.AssetExecutionContext) -> bytes:
     date = context.partition_time_window.start.strftime(r"%y%m%d")
-    url = PRICE_REPORT_URL.format(date=date)
+    url = f"https://www.b3.com.br/pesquisapregao/download?filelist=PR{date}.zip"
 
     with httpx2.Client(follow_redirects=True, timeout=60) as client:
         response = client.get(url)
