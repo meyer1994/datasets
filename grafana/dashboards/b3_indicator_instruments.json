@@ -1,0 +1,155 @@
+{
+  "uid": "b3-indicator-instruments",
+  "title": "B3 - Indicator Instruments",
+  "tags": ["b3"],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": { "from": "now-30d/d", "to": "now/d" },
+  "timepicker": {
+    "refresh_intervals": [],
+    "quick_ranges": [
+      { "display": "Today", "from": "now/d", "to": "now/d" },
+      { "display": "Last 7 days", "from": "now-7d/d", "to": "now/d" },
+      { "display": "Last 30 days", "from": "now-30d/d", "to": "now/d" },
+      { "display": "Last 90 days", "from": "now-90d/d", "to": "now/d" },
+      { "display": "Last 6 months", "from": "now-6M/d", "to": "now/d" },
+      { "display": "Last 1 year", "from": "now-1y/d", "to": "now/d" },
+      { "display": "Last 2 years", "from": "now-2y/d", "to": "now/d" },
+      { "display": "Month to date", "from": "now/M", "to": "now/d" },
+      { "display": "Year to date", "from": "now/y", "to": "now/d" }
+    ]
+  },
+  "refresh": "",
+  "templating": {
+    "list": [
+      {
+        "name": "asset",
+        "label": "Indicator asset",
+        "type": "query",
+        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+        "query": "SELECT DISTINCT asset\nFROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "definition": "SELECT DISTINCT asset\nFROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": false,
+        "current": { "selected": true, "text": ["DOL", "EUR"], "value": ["DOL", "EUR"] },
+        "sort": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Registered indicators (latest day in range)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 8 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(*)::BIGINT AS indicators, count(DISTINCT asset)::BIGINT AS assets\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Registered indicators per day",
+      "gridPos": { "x": 6, "y": 0, "w": 18, "h": 8 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, count(*)::BIGINT AS indicators\nFROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Indicator register (latest day in range)",
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT asset,\n  description,\n  indicator_description,\n  instrument_name,\n  instrument_id::VARCHAR AS instrument_id,\n  indicator_type_code,\n  base_code,\n  value_type_code,\n  decimal_precision,\n  maturity_code\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY asset, description"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Indicators added / removed (within range)",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\nb AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM d\n),\ns AS (\n  SELECT instrument_id,\n    arg_max(asset, trad_dt) AS asset,\n    arg_max(description, trad_dt) AS description,\n    arg_max(indicator_description, trad_dt) AS indicator_description,\n    min(trad_dt) AS first_seen,\n    max(trad_dt) AS last_seen\n  FROM d\n  GROUP BY instrument_id\n)\nSELECT CASE WHEN s.first_seen > b.first_day THEN 'added' ELSE 'removed' END AS status,\n  s.asset,\n  s.description,\n  s.indicator_description,\n  strftime(s.first_seen, '%Y-%m-%d') AS first_seen,\n  strftime(s.last_seen, '%Y-%m-%d') AS last_seen\nFROM s, b\nWHERE s.first_seen > b.first_day\n  OR s.last_seen < b.last_day\nORDER BY greatest(s.first_seen, s.last_seen) DESC, s.asset, s.description"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Assets with most indicators (latest day in range)",
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT asset,\n  any_value(instrument_name) AS instrument_name,\n  count(*)::BIGINT AS indicators\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nGROUP BY asset\nORDER BY indicators DESC, asset\nLIMIT 20"
+        }
+      ]
+    }
+  ]
+}
