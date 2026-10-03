@@ -1,0 +1,91 @@
+{
+  "uid": "b3-bulletin-index-report",
+  "title": "B3 Bulletin - Index Report",
+  "tags": ["b3"],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": { "from": "now-7d/d", "to": "now/d" },
+  "timepicker": {
+    "refresh_intervals": [],
+    "quick_ranges": [
+      { "display": "Today", "from": "now/d", "to": "now/d" },
+      { "display": "Last 7 days", "from": "now-7d/d", "to": "now/d" },
+      { "display": "Last 30 days", "from": "now-30d/d", "to": "now/d" },
+      { "display": "Last 90 days", "from": "now-90d/d", "to": "now/d" },
+      { "display": "Last 6 months", "from": "now-6M/d", "to": "now/d" },
+      { "display": "Last 1 year", "from": "now-1y/d", "to": "now/d" },
+      { "display": "Last 2 years", "from": "now-2y/d", "to": "now/d" },
+      { "display": "Month to date", "from": "now/M", "to": "now/d" },
+      { "display": "Year to date", "from": "now/y", "to": "now/d" }
+    ]
+  },
+  "refresh": "",
+  "templating": {
+    "list": [
+      {
+        "name": "index",
+        "label": "Index",
+        "type": "query",
+        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+        "query": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE record_type = 'index'\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "definition": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE record_type = 'index'\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": false,
+        "current": { "selected": true, "text": ["IBOV"], "value": ["IBOV"] },
+        "sort": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "$index close",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
+      "repeat": "index",
+      "repeatDirection": "h",
+      "maxPerRow": 2,
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0 }, "overrides": [] },
+      "options": { "legend": { "showLegend": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, closing_price::DOUBLE AS close\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE record_type = 'index'\n  AND ticker = $index\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Indexes (latest day in range)",
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "oscillation" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\n  WHERE record_type = 'index'\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker, description,\n  closing_price::DOUBLE AS closing_price,\n  oscillation::DOUBLE AS oscillation,\n  rising_shares, falling_shares, stable_shares\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY ticker"
+        }
+      ]
+    }
+  ]
+}

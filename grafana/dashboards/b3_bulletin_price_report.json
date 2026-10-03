@@ -1,0 +1,137 @@
+{
+  "uid": "b3-bulletin-price-report",
+  "title": "B3 Bulletin - Price Report",
+  "tags": ["b3"],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": { "from": "now-7d/d", "to": "now/d" },
+  "timepicker": {
+    "refresh_intervals": [],
+    "quick_ranges": [
+      { "display": "Today", "from": "now/d", "to": "now/d" },
+      { "display": "Last 7 days", "from": "now-7d/d", "to": "now/d" },
+      { "display": "Last 30 days", "from": "now-30d/d", "to": "now/d" },
+      { "display": "Last 90 days", "from": "now-90d/d", "to": "now/d" },
+      { "display": "Last 6 months", "from": "now-6M/d", "to": "now/d" },
+      { "display": "Last 1 year", "from": "now-1y/d", "to": "now/d" },
+      { "display": "Last 2 years", "from": "now-2y/d", "to": "now/d" },
+      { "display": "Month to date", "from": "now/M", "to": "now/d" },
+      { "display": "Year to date", "from": "now/y", "to": "now/d" }
+    ]
+  },
+  "refresh": "",
+  "templating": {
+    "list": [
+      {
+        "name": "market",
+        "label": "Market",
+        "type": "query",
+        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+        "query": "WITH price_report AS (\n  SELECT p.*,\n    CASE h.tpmerc\n      WHEN '010' THEN 'Spot'\n      WHEN '012' THEN 'Call exercise'\n      WHEN '013' THEN 'Put exercise'\n      WHEN '017' THEN 'Auction'\n      WHEN '020' THEN 'Odd lot'\n      WHEN '030' THEN 'Forward'\n      WHEN '050' THEN 'Future (gain retention)'\n      WHEN '060' THEN 'Future (continuous)'\n      WHEN '070' THEN 'Call option'\n      WHEN '080' THEN 'Put option'\n      ELSE coalesce('Code ' || h.tpmerc, 'Other')\n    END AS market_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report/daily_parse/*.parquet') p\n  LEFT JOIN (\n    SELECT dtpreg, codneg, any_value(tpmerc) AS tpmerc\n    FROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\n    WHERE tipreg = '01'\n    GROUP BY ALL\n  ) h ON h.dtpreg = p.trad_dt AND h.codneg = p.ticker\n)\nSELECT DISTINCT market_type FROM price_report WHERE $__timeFilter(trad_dt::TIMESTAMP) ORDER BY 1",
+        "definition": "WITH price_report AS (\n  SELECT p.*,\n    CASE h.tpmerc\n      WHEN '010' THEN 'Spot'\n      WHEN '012' THEN 'Call exercise'\n      WHEN '013' THEN 'Put exercise'\n      WHEN '017' THEN 'Auction'\n      WHEN '020' THEN 'Odd lot'\n      WHEN '030' THEN 'Forward'\n      WHEN '050' THEN 'Future (gain retention)'\n      WHEN '060' THEN 'Future (continuous)'\n      WHEN '070' THEN 'Call option'\n      WHEN '080' THEN 'Put option'\n      ELSE coalesce('Code ' || h.tpmerc, 'Other')\n    END AS market_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report/daily_parse/*.parquet') p\n  LEFT JOIN (\n    SELECT dtpreg, codneg, any_value(tpmerc) AS tpmerc\n    FROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\n    WHERE tipreg = '01'\n    GROUP BY ALL\n  ) h ON h.dtpreg = p.trad_dt AND h.codneg = p.ticker\n)\nSELECT DISTINCT market_type FROM price_report WHERE $__timeFilter(trad_dt::TIMESTAMP) ORDER BY 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "'__all'",
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
+        "sort": 0
+      },
+      {
+        "name": "ticker",
+        "label": "Ticker",
+        "type": "query",
+        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+        "query": "WITH price_report AS (\n  SELECT p.*,\n    CASE h.tpmerc\n      WHEN '010' THEN 'Spot'\n      WHEN '012' THEN 'Call exercise'\n      WHEN '013' THEN 'Put exercise'\n      WHEN '017' THEN 'Auction'\n      WHEN '020' THEN 'Odd lot'\n      WHEN '030' THEN 'Forward'\n      WHEN '050' THEN 'Future (gain retention)'\n      WHEN '060' THEN 'Future (continuous)'\n      WHEN '070' THEN 'Call option'\n      WHEN '080' THEN 'Put option'\n      ELSE coalesce('Code ' || h.tpmerc, 'Other')\n    END AS market_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report/daily_parse/*.parquet') p\n  LEFT JOIN (\n    SELECT dtpreg, codneg, any_value(tpmerc) AS tpmerc\n    FROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\n    WHERE tipreg = '01'\n    GROUP BY ALL\n  ) h ON h.dtpreg = p.trad_dt AND h.codneg = p.ticker\n)\nSELECT DISTINCT ticker FROM price_report WHERE $__timeFilter(trad_dt::TIMESTAMP) AND trades > 0 AND ('__all' IN ($market) OR market_type IN ($market)) ORDER BY 1",
+        "definition": "WITH price_report AS (\n  SELECT p.*,\n    CASE h.tpmerc\n      WHEN '010' THEN 'Spot'\n      WHEN '012' THEN 'Call exercise'\n      WHEN '013' THEN 'Put exercise'\n      WHEN '017' THEN 'Auction'\n      WHEN '020' THEN 'Odd lot'\n      WHEN '030' THEN 'Forward'\n      WHEN '050' THEN 'Future (gain retention)'\n      WHEN '060' THEN 'Future (continuous)'\n      WHEN '070' THEN 'Call option'\n      WHEN '080' THEN 'Put option'\n      ELSE coalesce('Code ' || h.tpmerc, 'Other')\n    END AS market_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report/daily_parse/*.parquet') p\n  LEFT JOIN (\n    SELECT dtpreg, codneg, any_value(tpmerc) AS tpmerc\n    FROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\n    WHERE tipreg = '01'\n    GROUP BY ALL\n  ) h ON h.dtpreg = p.trad_dt AND h.codneg = p.ticker\n)\nSELECT DISTINCT ticker FROM price_report WHERE $__timeFilter(trad_dt::TIMESTAMP) AND trades > 0 AND ('__all' IN ($market) OR market_type IN ($market)) ORDER BY 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "'__all'",
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
+        "sort": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Last price (top 10 by volume)",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "none", "displayName": "${__field.labels.ticker}" }, "overrides": [] },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" } },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH price_report AS (\n  SELECT p.*,\n    CASE h.tpmerc\n      WHEN '010' THEN 'Spot'\n      WHEN '012' THEN 'Call exercise'\n      WHEN '013' THEN 'Put exercise'\n      WHEN '017' THEN 'Auction'\n      WHEN '020' THEN 'Odd lot'\n      WHEN '030' THEN 'Forward'\n      WHEN '050' THEN 'Future (gain retention)'\n      WHEN '060' THEN 'Future (continuous)'\n      WHEN '070' THEN 'Call option'\n      WHEN '080' THEN 'Put option'\n      ELSE coalesce('Code ' || h.tpmerc, 'Other')\n    END AS market_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report/daily_parse/*.parquet') p\n  LEFT JOIN (\n    SELECT dtpreg, codneg, any_value(tpmerc) AS tpmerc\n    FROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\n    WHERE tipreg = '01'\n    GROUP BY ALL\n  ) h ON h.dtpreg = p.trad_dt AND h.codneg = p.ticker\n),\nd AS (\n  SELECT trad_dt, ticker, last_price, volume_brl\n  FROM price_report\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND last_price IS NOT NULL\n    AND ('__all' IN ($market) OR market_type IN ($market))\n    AND ('__all' IN ($ticker) OR ticker IN ($ticker))\n),\ntop AS (\n  SELECT ticker FROM d GROUP BY ticker ORDER BY sum(volume_brl) DESC NULLS LAST LIMIT 10\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, arg_max(last_price, volume_brl)::DOUBLE AS last_price\nFROM d\nWHERE ticker IN (SELECT ticker FROM top)\nGROUP BY ALL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Traded volume by market (BRL)",
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyBRL",
+          "displayName": "${__field.labels.market_type}",
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" } },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["market_type"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH price_report AS (\n  SELECT p.*,\n    CASE h.tpmerc\n      WHEN '010' THEN 'Spot'\n      WHEN '012' THEN 'Call exercise'\n      WHEN '013' THEN 'Put exercise'\n      WHEN '017' THEN 'Auction'\n      WHEN '020' THEN 'Odd lot'\n      WHEN '030' THEN 'Forward'\n      WHEN '050' THEN 'Future (gain retention)'\n      WHEN '060' THEN 'Future (continuous)'\n      WHEN '070' THEN 'Call option'\n      WHEN '080' THEN 'Put option'\n      ELSE coalesce('Code ' || h.tpmerc, 'Other')\n    END AS market_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report/daily_parse/*.parquet') p\n  LEFT JOIN (\n    SELECT dtpreg, codneg, any_value(tpmerc) AS tpmerc\n    FROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\n    WHERE tipreg = '01'\n    GROUP BY ALL\n  ) h ON h.dtpreg = p.trad_dt AND h.codneg = p.ticker\n)\nSELECT trad_dt::TIMESTAMP AS time, market_type, sum(volume_brl)::DOUBLE AS volume_brl\nFROM price_report\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND ('__all' IN ($market) OR market_type IN ($market))\n  AND ('__all' IN ($ticker) OR ticker IN ($ticker))\nGROUP BY ALL\nORDER BY time, market_type"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Top 15 instruments by volume (latest day in range)",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "volume_brl" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+          { "matcher": { "id": "byName", "options": "oscillation_pct" }, "properties": [{ "id": "unit", "value": "percent" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH price_report AS (\n  SELECT p.*,\n    CASE h.tpmerc\n      WHEN '010' THEN 'Spot'\n      WHEN '012' THEN 'Call exercise'\n      WHEN '013' THEN 'Put exercise'\n      WHEN '017' THEN 'Auction'\n      WHEN '020' THEN 'Odd lot'\n      WHEN '030' THEN 'Forward'\n      WHEN '050' THEN 'Future (gain retention)'\n      WHEN '060' THEN 'Future (continuous)'\n      WHEN '070' THEN 'Call option'\n      WHEN '080' THEN 'Put option'\n      ELSE coalesce('Code ' || h.tpmerc, 'Other')\n    END AS market_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report/daily_parse/*.parquet') p\n  LEFT JOIN (\n    SELECT dtpreg, codneg, any_value(tpmerc) AS tpmerc\n    FROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\n    WHERE tipreg = '01'\n    GROUP BY ALL\n  ) h ON h.dtpreg = p.trad_dt AND h.codneg = p.ticker\n),\nd AS (\n  SELECT *\n  FROM price_report\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($market) OR market_type IN ($market))\n    AND ('__all' IN ($ticker) OR ticker IN ($ticker))\n)\nSELECT trad_dt, ticker, market_type, trades,\n  last_price::DOUBLE AS last_price,\n  oscillation_pct::DOUBLE AS oscillation_pct,\n  volume_brl::DOUBLE AS volume_brl\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY volume_brl DESC NULLS LAST\nLIMIT 15"
+        }
+      ]
+    }
+  ]
+}

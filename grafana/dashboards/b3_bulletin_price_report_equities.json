@@ -1,0 +1,154 @@
+{
+  "uid": "b3-bulletin-price-report-equities",
+  "title": "B3 Bulletin - Equities (simplified)",
+  "tags": ["b3"],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": { "from": "now-30d/d", "to": "now/d" },
+  "timepicker": {
+    "refresh_intervals": [],
+    "quick_ranges": [
+      { "display": "Today", "from": "now/d", "to": "now/d" },
+      { "display": "Last 7 days", "from": "now-7d/d", "to": "now/d" },
+      { "display": "Last 30 days", "from": "now-30d/d", "to": "now/d" },
+      { "display": "Last 90 days", "from": "now-90d/d", "to": "now/d" },
+      { "display": "Last 6 months", "from": "now-6M/d", "to": "now/d" },
+      { "display": "Last 1 year", "from": "now-1y/d", "to": "now/d" },
+      { "display": "Last 2 years", "from": "now-2y/d", "to": "now/d" },
+      { "display": "Month to date", "from": "now/M", "to": "now/d" },
+      { "display": "Year to date", "from": "now/y", "to": "now/d" }
+    ]
+  },
+  "refresh": "",
+  "templating": {
+    "list": [
+      {
+        "name": "ticker",
+        "label": "Ticker",
+        "type": "query",
+        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+        "query": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\nWHERE regular_trades > 0\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "definition": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\nWHERE regular_trades > 0\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": false,
+        "current": { "selected": true, "text": ["PETR4"], "value": ["PETR4"] },
+        "sort": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "candlestick",
+      "title": "$ticker daily candles",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 10 },
+      "repeat": "ticker",
+      "repeatDirection": "h",
+      "maxPerRow": 2,
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "currencyBRL" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "volume" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "displayName", "value": "trades" }] }
+        ]
+      },
+      "options": {
+        "mode": "candles+volume",
+        "candleStyle": "candles",
+        "colorStrategy": "open-close",
+        "includeAllFields": false,
+        "legend": { "showLegend": false }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  trad_dt::TIMESTAMP AS time,\n  first_price::DOUBLE AS open,\n  max_price::DOUBLE AS high,\n  min_price::DOUBLE AS low,\n  last_price::DOUBLE AS close,\n  regular_trades AS volume\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\nWHERE ticker = $ticker\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Regular trades per day",
+      "gridPos": { "x": 0, "y": 10, "w": 24, "h": 8 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1 }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": false } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, sum(regular_trades)::BIGINT AS trades\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY time\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Most traded (latest day in range)",
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "^(open|high|low|close)$" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+          { "matcher": { "id": "byName", "options": "intraday_change" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker,\n  regular_trades AS trades,\n  first_price::DOUBLE AS open,\n  max_price::DOUBLE AS high,\n  min_price::DOUBLE AS low,\n  last_price::DOUBLE AS close,\n  (last_price / first_price - 1)::DOUBLE AS intraday_change\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY regular_trades DESC NULLS LAST\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Largest intraday moves (latest day in range, 100+ trades)",
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "^(open|close)$" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+          { "matcher": { "id": "byName", "options": "intraday_change" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker,\n  regular_trades AS trades,\n  first_price::DOUBLE AS open,\n  last_price::DOUBLE AS close,\n  (last_price / first_price - 1)::DOUBLE AS intraday_change\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND regular_trades >= 100\nORDER BY abs(last_price / first_price - 1) DESC NULLS LAST\nLIMIT 20"
+        }
+      ]
+    }
+  ]
+}
