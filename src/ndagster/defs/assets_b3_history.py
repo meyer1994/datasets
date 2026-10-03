@@ -100,6 +100,7 @@ def output_metadata(df: pl.DataFrame) -> dict[str, dg.MetadataValue]:
 
 
 @dg.asset(
+    key=["b3_history", "daily", "download"],
     partitions_def=dg.TimeWindowPartitionsDefinition(
         start="2025-01-01",
         timezone="America/Sao_Paulo",
@@ -131,6 +132,8 @@ def daily_download(context: dg.AssetExecutionContext) -> bytes:
 
 
 @dg.asset(
+    key=["b3_history", "daily", "parse"],
+    ins={"daily_download": dg.AssetIn(key=["b3_history", "daily", "download"])},
     partitions_def=dg.TimeWindowPartitionsDefinition(
         start="2025-01-01",
         timezone="America/Sao_Paulo",
@@ -165,6 +168,40 @@ def daily_parse(
 
 
 @dg.asset(
+    key=["b3_history", "monthly", "download"],
+    partitions_def=dg.TimeWindowPartitionsDefinition(
+        start="2025-01",
+        timezone="America/Sao_Paulo",
+        cron_schedule="0 0 1 * *",
+        fmt=r"%Y-%m",
+    ),
+    io_manager_key="io_manager_raw",
+    retry_policy=dg.RetryPolicy(
+        delay=3600,
+        max_retries=6,
+    ),
+)
+def monthly_download(context: dg.AssetExecutionContext) -> bytes:
+    date = context.partition_time_window.start.strftime(r"%m%Y")
+    url = f"https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_M{date}.zip"
+
+    with httpx2.Client(follow_redirects=True, timeout=60) as client:
+        response = client.get(url)
+        response.raise_for_status()
+
+    context.add_output_metadata(
+        {
+            "url": dg.MetadataValue.url(url),
+            "size_bytes": dg.MetadataValue.int(len(response.content)),
+            "response_content_type": response.headers.get("content-type", ""),
+        }
+    )
+    return response.content
+
+
+@dg.asset(
+    key=["b3_history", "monthly", "parse"],
+    ins={"monthly_download": dg.AssetIn(key=["b3_history", "monthly", "download"])},
     partitions_def=dg.TimeWindowPartitionsDefinition(
         start="2025-01",
         timezone="America/Sao_Paulo",
@@ -172,17 +209,24 @@ def daily_parse(
         fmt=r"%Y-%m",
     ),
     io_manager_key="io_manager_parquet",
-    retry_policy=dg.RetryPolicy(
-        delay=3600,
-        max_retries=6,
+    automation_condition=(
+        dg.AutomationCondition.any_deps_updated().since_last_handled()
+        & ~dg.AutomationCondition.any_deps_in_progress()
+        & ~dg.AutomationCondition.in_progress()
     ),
 )
-def monthly(context: dg.AssetExecutionContext) -> pl.DataFrame:
+def monthly_parse(
+    context: dg.AssetExecutionContext, monthly_download: bytes
+) -> pl.DataFrame:
     date = context.partition_time_window.start.strftime(r"%m%Y")
-    url = f"zip://https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_M{date}.zip/COTAHIST_M{date}.TXT"
 
-    with database() as conn:
-        df = conn.sql(COTAHIST_QUERY, params={"source": url}).pl()
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / f"COTAHIST_M{date}.zip"
+        path.write_bytes(monthly_download)
+
+        with database() as conn:
+            source = f"zip://{path}/COTAHIST_M{date}.TXT"
+            df = conn.sql(COTAHIST_QUERY, params={"source": source}).pl()
 
     context.log.debug("Loaded %d rows", df.height)
     context.log.debug("Schema: %s", df.schema)
@@ -192,6 +236,40 @@ def monthly(context: dg.AssetExecutionContext) -> pl.DataFrame:
 
 
 @dg.asset(
+    key=["b3_history", "yearly", "download"],
+    partitions_def=dg.TimeWindowPartitionsDefinition(
+        start="2025",
+        timezone="America/Sao_Paulo",
+        cron_schedule="0 0 1 1 *",
+        fmt=r"%Y",
+    ),
+    io_manager_key="io_manager_raw",
+    retry_policy=dg.RetryPolicy(
+        delay=3600,
+        max_retries=6,
+    ),
+)
+def yearly_download(context: dg.AssetExecutionContext) -> bytes:
+    date = context.partition_time_window.start.strftime(r"%Y")
+    url = f"https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_A{date}.zip"
+
+    with httpx2.Client(follow_redirects=True, timeout=60) as client:
+        response = client.get(url)
+        response.raise_for_status()
+
+    context.add_output_metadata(
+        {
+            "url": dg.MetadataValue.url(url),
+            "size_bytes": dg.MetadataValue.int(len(response.content)),
+            "response_content_type": response.headers.get("content-type", ""),
+        }
+    )
+    return response.content
+
+
+@dg.asset(
+    key=["b3_history", "yearly", "parse"],
+    ins={"yearly_download": dg.AssetIn(key=["b3_history", "yearly", "download"])},
     partitions_def=dg.TimeWindowPartitionsDefinition(
         start="2025",
         timezone="America/Sao_Paulo",
@@ -199,17 +277,24 @@ def monthly(context: dg.AssetExecutionContext) -> pl.DataFrame:
         fmt=r"%Y",
     ),
     io_manager_key="io_manager_parquet",
-    retry_policy=dg.RetryPolicy(
-        delay=3600,
-        max_retries=6,
+    automation_condition=(
+        dg.AutomationCondition.any_deps_updated().since_last_handled()
+        & ~dg.AutomationCondition.any_deps_in_progress()
+        & ~dg.AutomationCondition.in_progress()
     ),
 )
-def yearly(context: dg.AssetExecutionContext) -> pl.DataFrame:
+def yearly_parse(
+    context: dg.AssetExecutionContext, yearly_download: bytes
+) -> pl.DataFrame:
     date = context.partition_time_window.start.strftime(r"%Y")
-    url = f"zip://https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_A{date}.zip/COTAHIST_A{date}.TXT"
 
-    with database() as conn:
-        df = conn.sql(COTAHIST_QUERY, params={"source": url}).pl()
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / f"COTAHIST_A{date}.zip"
+        path.write_bytes(yearly_download)
+
+        with database() as conn:
+            source = f"zip://{path}/COTAHIST_A{date}.TXT"
+            df = conn.sql(COTAHIST_QUERY, params={"source": source}).pl()
 
     context.log.debug("Loaded %d rows", df.height)
     context.log.debug("Schema: %s", df.schema)
