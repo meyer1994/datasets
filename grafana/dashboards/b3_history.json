@@ -10,21 +10,12 @@
   "templating": {
     "list": [
       {
-        "name": "source",
-        "label": "Source",
-        "type": "custom",
-        "query": "Daily : daily_parse,Monthly : monthly_parse,Yearly : yearly_parse",
-        "current": { "text": "Daily", "value": "daily_parse" },
-        "multi": false,
-        "includeAll": false
-      },
-      {
         "name": "ticker",
         "label": "Ticker",
         "type": "custom",
         "query": "PETR4,VALE3,ITUB4,BBDC4,BBAS3,ABEV3,WEGE3,BOVA11",
-        "current": { "text": "PETR4", "value": "PETR4" },
-        "multi": false,
+        "current": { "text": ["PETR4"], "value": ["PETR4"] },
+        "multi": true,
         "includeAll": false,
         "allowCustomValue": true
       }
@@ -46,7 +37,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT sum(voltot) AS volume\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
+          "rawSql": "SELECT sum(voltot) AS volume\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
         }
       ]
     },
@@ -65,7 +56,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT sum(totneg) AS trades\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
+          "rawSql": "SELECT sum(totneg)::BIGINT AS trades\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
         }
       ]
     },
@@ -84,7 +75,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT count(DISTINCT codneg) AS instruments\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
+          "rawSql": "SELECT count(DISTINCT codneg) AS instruments\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
         }
       ]
     },
@@ -103,7 +94,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT count(DISTINCT dtpreg) AS days\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
+          "rawSql": "SELECT count(DISTINCT dtpreg) AS days\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)"
         }
       ]
     },
@@ -112,6 +103,9 @@
       "type": "candlestick",
       "title": "$ticker daily candles (cash market)",
       "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+      "repeat": "ticker",
+      "repeatDirection": "h",
+      "maxPerRow": 2,
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": { "unit": "currencyBRL" },
@@ -133,7 +127,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT\n  dtpreg::TIMESTAMP AS time,\n  preabe AS open,\n  premax AS high,\n  premin AS low,\n  preult AS close,\n  voltot AS volume\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE codneg = '$ticker'\n  AND tpmerc = '010'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nORDER BY time"
+          "rawSql": "SELECT\n  dtpreg::TIMESTAMP AS time,\n  preabe AS open,\n  premax AS high,\n  premin AS low,\n  preult AS close,\n  voltot AS volume\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg = $ticker\n  AND tpmerc = '010'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nORDER BY time"
         }
       ]
     },
@@ -158,7 +152,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT\n  dtpreg::TIMESTAMP AS time,\n  sum(voltot) FILTER (WHERE tpmerc = '010') AS \"Cash\",\n  sum(voltot) FILTER (WHERE tpmerc = '020') AS \"Odd lot\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('070', '080')) AS \"Options\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('012', '013')) AS \"Option exercise\",\n  sum(voltot) FILTER (WHERE tpmerc = '030') AS \"Forward\",\n  sum(voltot) FILTER (WHERE tpmerc = '017') AS \"Auction\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('050', '060')) AS \"Futures\"\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY time\nORDER BY time"
+          "rawSql": "SELECT\n  dtpreg::TIMESTAMP AS time,\n  sum(voltot) FILTER (WHERE tpmerc = '010') AS \"Cash\",\n  sum(voltot) FILTER (WHERE tpmerc = '020') AS \"Odd lot\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('070', '080')) AS \"Options\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('012', '013')) AS \"Option exercise\",\n  sum(voltot) FILTER (WHERE tpmerc = '030') AS \"Forward\",\n  sum(voltot) FILTER (WHERE tpmerc = '017') AS \"Auction\",\n  sum(voltot) FILTER (WHERE tpmerc IN ('050', '060')) AS \"Futures\"\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY time\nORDER BY time"
         }
       ]
     },
@@ -185,7 +179,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT\n  codneg AS ticker,\n  any_value(nomres) AS name,\n  any_value(especi) AS spec,\n  sum(totneg) AS trades,\n  sum(voltot) AS volume,\n  arg_min(preult, dtpreg) AS first_close,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE tpmerc = '010'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nORDER BY volume DESC\nLIMIT 20"
+          "rawSql": "SELECT\n  codneg AS ticker,\n  any_value(nomres) AS name,\n  any_value(especi) AS spec,\n  sum(totneg)::BIGINT AS trades,\n  sum(voltot) AS volume,\n  arg_min(preult, dtpreg) AS first_close,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE tpmerc = '010'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nORDER BY volume DESC\nLIMIT 20"
         }
       ]
     },
@@ -210,7 +204,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT\n  codneg AS ticker,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE tpmerc = '010'\n  AND codbdi = '02'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nHAVING avg(voltot) >= 1000000\nORDER BY period_return DESC\nLIMIT 15"
+          "rawSql": "SELECT\n  codneg AS ticker,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE tpmerc = '010'\n  AND codbdi = '02'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nHAVING avg(voltot) >= 1000000\nORDER BY period_return DESC\nLIMIT 15"
         }
       ]
     },
@@ -235,7 +229,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT\n  codneg AS ticker,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/${source}/*.parquet')\nWHERE tpmerc = '010'\n  AND codbdi = '02'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nHAVING avg(voltot) >= 1000000\nORDER BY period_return ASC\nLIMIT 15"
+          "rawSql": "SELECT\n  codneg AS ticker,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE tpmerc = '010'\n  AND codbdi = '02'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nHAVING avg(voltot) >= 1000000\nORDER BY period_return ASC\nLIMIT 15"
         }
       ]
     }
