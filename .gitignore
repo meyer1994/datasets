@@ -446,3 +446,6 @@ nohup.out
 
 # B3 COTAHIST data files
 COTAHIST_*
+
+# Parquet IO manager output
+data/

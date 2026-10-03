@@ -4,10 +4,11 @@ requires-python = ">=3.10,<3.15"
 version = "0.1.0"
 dependencies = [
     "dagster==1.13.25",
+    "dagster-polars>=0.27.12",
     "duckdb>=1.5.6",
     "httpx2>=2.13.1",
-    "numpy>=2.2.6",
-    "pandas>=2.3.3",
+    "polars>=1.44.2",
+    "s3fs>=2026.9.0",
 ]
 
 [dependency-groups]

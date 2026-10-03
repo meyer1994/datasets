@@ -2,7 +2,7 @@ import contextlib
 
 import dagster as dg
 import duckdb
-import pandas as pd
+import polars as pl
 
 COTAHIST_QUERY = r"""
 SELECT
@@ -63,23 +63,35 @@ def database():
         yield conn
 
 
-def output_metadata(df: pd.DataFrame) -> dict[str, dg.MetadataValue]:
+def to_markdown(df: pl.DataFrame, **config) -> str:
+    with pl.Config(
+        tbl_formatting="MARKDOWN",
+        tbl_hide_column_data_types=True,
+        tbl_hide_dataframe_shape=True,
+        tbl_rows=-1,
+        tbl_cols=-1,
+        tbl_width_chars=-1,
+        fmt_str_lengths=100,
+        **config,
+    ):
+        return str(df)
+
+
+def output_metadata(df: pl.DataFrame) -> dict[str, dg.MetadataValue]:
     top_volume = (
-        df.groupby(["codneg", "nomres"], as_index=False)["voltot"]
-        .sum()
-        .nlargest(10, "voltot")
+        df.group_by("codneg", "nomres")
+        .agg(pl.col("voltot").sum())
+        .top_k(10, by="voltot")
     )
 
     return {
-        "total_rows": dg.MetadataValue.int(len(df)),
-        "avg_price": dg.MetadataValue.float(float(df["premed"].mean())),
+        "total_rows": dg.MetadataValue.int(df.height),
+        "avg_price": dg.MetadataValue.float(float(df["premed"].mean() or 0)),
         "total_trades": dg.MetadataValue.int(int(df["totneg"].sum())),
         "total_volume": dg.MetadataValue.float(float(df["voltot"].sum())),
-        "preview": dg.MetadataValue.md(
-            df.head(10).to_markdown(index=False, disable_numparse=True)
-        ),
+        "preview": dg.MetadataValue.md(to_markdown(df.head(10))),
         "top_volume": dg.MetadataValue.md(
-            top_volume.to_markdown(index=False, floatfmt=",.2f")
+            to_markdown(top_volume, thousands_separator=True, float_precision=2)
         ),
     }
 
@@ -96,16 +108,15 @@ def output_metadata(df: pd.DataFrame) -> dict[str, dg.MetadataValue]:
         max_retries=6,
     ),
 )
-def daily(context: dg.AssetExecutionContext) -> pd.DataFrame:
+def daily(context: dg.AssetExecutionContext) -> pl.DataFrame:
     date = context.partition_time_window.start.strftime(r"%d%m%Y")
     url = f"zip://https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_D{date}.zip/COTAHIST_D{date}.TXT"
 
     with database() as conn:
-        df = conn.sql(COTAHIST_QUERY, params={"source": url}).df()
+        df = conn.sql(COTAHIST_QUERY, params={"source": url}).pl()
 
-    context.log.debug("Loaded %d rows", len(df))
-    context.log.debug("Columns: %s", df.columns)
-    context.log.debug("Dtypes: %s", df.dtypes)
+    context.log.debug("Loaded %d rows", df.height)
+    context.log.debug("Schema: %s", df.schema)
     context.add_output_metadata(output_metadata(df))
 
     return df
@@ -123,16 +134,15 @@ def daily(context: dg.AssetExecutionContext) -> pd.DataFrame:
         max_retries=6,
     ),
 )
-def monthly(context: dg.AssetExecutionContext) -> pd.DataFrame:
+def monthly(context: dg.AssetExecutionContext) -> pl.DataFrame:
     date = context.partition_time_window.start.strftime(r"%m%Y")
     url = f"zip://https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_M{date}.zip/COTAHIST_M{date}.TXT"
 
     with database() as conn:
-        df = conn.sql(COTAHIST_QUERY, params={"source": url}).df()
+        df = conn.sql(COTAHIST_QUERY, params={"source": url}).pl()
 
-    context.log.debug("Loaded %d rows", len(df))
-    context.log.debug("Columns: %s", df.columns)
-    context.log.debug("Dtypes: %s", df.dtypes)
+    context.log.debug("Loaded %d rows", df.height)
+    context.log.debug("Schema: %s", df.schema)
     context.add_output_metadata(output_metadata(df))
 
     return df
@@ -150,16 +160,15 @@ def monthly(context: dg.AssetExecutionContext) -> pd.DataFrame:
         max_retries=6,
     ),
 )
-def yearly(context: dg.AssetExecutionContext) -> pd.DataFrame:
+def yearly(context: dg.AssetExecutionContext) -> pl.DataFrame:
     date = context.partition_time_window.start.strftime(r"%Y")
     url = f"zip://https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_A{date}.zip/COTAHIST_A{date}.TXT"
 
     with database() as conn:
-        df = conn.sql(COTAHIST_QUERY, params={"source": url}).df()
+        df = conn.sql(COTAHIST_QUERY, params={"source": url}).pl()
 
-    context.log.debug("Loaded %d rows", len(df))
-    context.log.debug("Columns: %s", df.columns)
-    context.log.debug("Dtypes: %s", df.dtypes)
+    context.log.debug("Loaded %d rows", df.height)
+    context.log.debug("Schema: %s", df.schema)
     context.add_output_metadata(output_metadata(df))
 
     return df
