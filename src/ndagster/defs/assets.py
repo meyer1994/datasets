@@ -86,7 +86,7 @@ def output_metadata(df: pd.DataFrame) -> dict[str, dg.MetadataValue]:
 
 @dg.asset(
     partitions_def=dg.TimeWindowPartitionsDefinition(
-        start="2026-09-01",
+        start="2025-01-01",
         timezone="America/Sao_Paulo",
         cron_schedule="0 0 * * 1-5",
         fmt=r"%Y-%m-%d",
@@ -113,7 +113,7 @@ def daily(context: dg.AssetExecutionContext) -> pd.DataFrame:
 
 @dg.asset(
     partitions_def=dg.TimeWindowPartitionsDefinition(
-        start="2026-01",
+        start="2025-01",
         timezone="America/Sao_Paulo",
         cron_schedule="0 0 1 * *",
         fmt=r"%Y-%m",
@@ -140,7 +140,7 @@ def monthly(context: dg.AssetExecutionContext) -> pd.DataFrame:
 
 @dg.asset(
     partitions_def=dg.TimeWindowPartitionsDefinition(
-        start="1986",
+        start="2025",
         timezone="America/Sao_Paulo",
         cron_schedule="0 0 1 1 *",
         fmt=r"%Y",
