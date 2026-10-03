@@ -13,7 +13,7 @@ B3 daily files from [Pesquisa por pregão](https://www.b3.com.br/pt_br/market-da
 7. [x] Cadastro de instrumentos indicadores – BVBG.029.02 Instruments File
 8. [ ] BVBG.026.01 Daily High Frequency Trader *(discontinued, last published 2022)*
 9. [x] Custo Unitário Diário de Tarifação – BVBG.044.01 Fee Daily Unit Cost
-10. [ ] Custo Unitário de Tarifação – BVBG.043.01 Fee Unit Cost
+10. [x] Custo Unitário de Tarifação – BVBG.043.01 Fee Unit Cost
 11. [ ] Fatores Primitivos de Risco – Primitive Risk Factors (FPRs)
 12. [ ] Fórmulas de Risco – Risk Formulas
 13. [ ] Informações Variáveis de Tarifação – BVBG.024.01 Fee Variables

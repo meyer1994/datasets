@@ -1,0 +1,462 @@
+{
+  "uid": "b3-fee-unit-cost",
+  "title": "B3 - Fee Unit Cost",
+  "tags": [
+    "b3"
+  ],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-1y/d",
+    "to": "now/d"
+  },
+  "timepicker": {
+    "refresh_intervals": [],
+    "quick_ranges": [
+      {
+        "display": "Today",
+        "from": "now/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 7 days",
+        "from": "now-7d/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 30 days",
+        "from": "now-30d/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 90 days",
+        "from": "now-90d/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 6 months",
+        "from": "now-6M/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 1 year",
+        "from": "now-1y/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Last 2 years",
+        "from": "now-2y/d",
+        "to": "now/d"
+      },
+      {
+        "display": "Month to date",
+        "from": "now/M",
+        "to": "now/d"
+      },
+      {
+        "display": "Year to date",
+        "from": "now/y",
+        "to": "now/d"
+      }
+    ]
+  },
+  "refresh": "",
+  "templating": {
+    "list": [
+      {
+        "name": "market",
+        "label": "Market",
+        "type": "query",
+        "datasource": {
+          "type": "motherduck-duckdb-datasource",
+          "uid": "duckdb-minio"
+        },
+        "query": "SELECT DISTINCT market\nFROM read_parquet('s3://uploads/b3_fee_unit_cost/monthly_parse/*.parquet')\nWHERE $__timeFilter(valid_from::TIMESTAMP)\nORDER BY 1",
+        "definition": "SELECT DISTINCT market\nFROM read_parquet('s3://uploads/b3_fee_unit_cost/monthly_parse/*.parquet')\nWHERE $__timeFilter(valid_from::TIMESTAMP)\nORDER BY 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "'__all'",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1
+      },
+      {
+        "name": "asset",
+        "label": "Asset",
+        "type": "query",
+        "datasource": {
+          "type": "motherduck-duckdb-datasource",
+          "uid": "duckdb-minio"
+        },
+        "query": "SELECT DISTINCT asset\nFROM read_parquet('s3://uploads/b3_fee_unit_cost/monthly_parse/*.parquet')\nWHERE ('__all' IN ($market) OR market IN ($market))\n  AND $__timeFilter(valid_from::TIMESTAMP)\nORDER BY 1",
+        "definition": "SELECT DISTINCT asset\nFROM read_parquet('s3://uploads/b3_fee_unit_cost/monthly_parse/*.parquet')\nWHERE ('__all' IN ($market) OR market IN ($market))\n  AND $__timeFilter(valid_from::TIMESTAMP)\nORDER BY 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "'__all'",
+        "current": {
+          "selected": true,
+          "text": [
+            "DOL",
+            "WDO",
+            "IND",
+            "WIN"
+          ],
+          "value": [
+            "DOL",
+            "WDO",
+            "IND",
+            "WIN"
+          ]
+        },
+        "sort": 1
+      },
+      {
+        "name": "day_trade",
+        "label": "Day trade",
+        "type": "query",
+        "datasource": {
+          "type": "motherduck-duckdb-datasource",
+          "uid": "duckdb-minio"
+        },
+        "query": "SELECT DISTINCT day_trade::VARCHAR AS day_trade\nFROM read_parquet('s3://uploads/b3_fee_unit_cost/monthly_parse/*.parquet')\nWHERE $__timeFilter(valid_from::TIMESTAMP)\nORDER BY 1",
+        "definition": "SELECT DISTINCT day_trade::VARCHAR AS day_trade\nFROM read_parquet('s3://uploads/b3_fee_unit_cost/monthly_parse/*.parquet')\nWHERE $__timeFilter(valid_from::TIMESTAMP)\nORDER BY 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "'__all'",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Total unit cost (exchange + registration) by application month",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 10
+      },
+      "interval": "1d",
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "duckdb-minio"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyBRL",
+          "decimals": 2,
+          "displayName": "${__field.labels.series}",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "showPoints": "always",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "right"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "transformations": [
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "series"
+            ],
+            "keepFields": false,
+            "naming": {
+              "asLabels": true
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "motherduck-duckdb-datasource",
+            "uid": "duckdb-minio"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT valid_from::TIMESTAMP AS time,\n  concat_ws(' · ', asset, 'mkt ' || market, CASE WHEN day_trade THEN 'day trade' END, CASE WHEN trade_type <> '0' THEN 'tx ' || trade_type END, CASE WHEN strategy_leg IS NOT NULL THEN 'leg ' || strategy_leg END) AS series,\n  (exchange_fee + registration_fee)::DOUBLE AS total_fee\nFROM read_parquet('s3://uploads/b3_fee_unit_cost/monthly_parse/*.parquet')\nWHERE ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('__all' IN ($market) OR market IN ($market))\n  AND ('__all' IN ($day_trade) OR day_trade::VARCHAR IN ($day_trade))\n  AND $__timeFilter(valid_from::TIMESTAMP)\nORDER BY time, series"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Current unit costs (latest publication in range)",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "duckdb-minio"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "_fee$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBRL"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "motherduck-duckdb-datasource",
+            "uid": "duckdb-minio"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_fee_unit_cost/monthly_parse/*.parquet')\n  WHERE $__timeFilter(valid_from::TIMESTAMP)\n)\nSELECT asset, market, segment, day_trade, trade_type, strategy_leg,\n  exchange_fee::DOUBLE AS exchange_fee,\n  registration_fee::DOUBLE AS registration_fee,\n  (exchange_fee + registration_fee)::DOUBLE AS total_fee,\n  rollover_from, rollover_to,\n  rollover_exchange_fee::DOUBLE AS rollover_exchange_fee,\n  rollover_registration_fee::DOUBLE AS rollover_registration_fee,\n  valid_from, valid_to\nFROM d\nWHERE rpt_dt = (SELECT max(rpt_dt) FROM d)\n  AND ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('__all' IN ($market) OR market IN ($market))\n  AND ('__all' IN ($day_trade) OR day_trade::VARCHAR IN ($day_trade))\nORDER BY asset, market, day_trade, trade_type, strategy_leg"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Unit cost changes vs previous publication",
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 14,
+        "h": 12
+      },
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "duckdb-minio"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "_fee$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBRL"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "change_pct"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "motherduck-duckdb-datasource",
+            "uid": "duckdb-minio"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    exchange_fee + registration_fee AS total_fee,\n    lag(exchange_fee + registration_fee) OVER w AS prev_total_fee\n  FROM read_parquet('s3://uploads/b3_fee_unit_cost/monthly_parse/*.parquet')\n  WINDOW w AS (\n    PARTITION BY segment, market, asset, day_trade, trade_type, strategy_leg\n    ORDER BY valid_from\n  )\n)\nSELECT valid_from, asset, market, day_trade, trade_type, strategy_leg,\n  prev_total_fee::DOUBLE AS previous_total_fee,\n  total_fee::DOUBLE AS total_fee,\n  (total_fee / nullif(prev_total_fee, 0) - 1)::DOUBLE AS change_pct\nFROM d\nWHERE prev_total_fee IS NOT NULL\n  AND total_fee <> prev_total_fee\n  AND ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('__all' IN ($market) OR market IN ($market))\n  AND ('__all' IN ($day_trade) OR day_trade::VARCHAR IN ($day_trade))\n  AND $__timeFilter(valid_from::TIMESTAMP)\nORDER BY valid_from DESC, abs(total_fee - prev_total_fee) DESC\nLIMIT 500"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "barchart",
+      "title": "Most expensive regular contracts (latest publication in range)",
+      "gridPos": {
+        "x": 14,
+        "y": 22,
+        "w": 10,
+        "h": 12
+      },
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "duckdb-minio"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyBRL",
+          "decimals": 2,
+          "custom": {
+            "fillOpacity": 80
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "xField": "instrument",
+        "stacking": "normal",
+        "showValue": "never",
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "motherduck-duckdb-datasource",
+            "uid": "duckdb-minio"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_fee_unit_cost/monthly_parse/*.parquet')\n  WHERE $__timeFilter(valid_from::TIMESTAMP)\n)\nSELECT asset || ' (mkt ' || market || ')' AS instrument,\n  exchange_fee::DOUBLE AS exchange_fee,\n  registration_fee::DOUBLE AS registration_fee\nFROM d\nWHERE rpt_dt = (SELECT max(rpt_dt) FROM d)\n  AND NOT day_trade\n  AND trade_type = '0'\n  AND strategy_leg IS NULL\nORDER BY exchange_fee + registration_fee DESC\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Day-trade unit cost as % of regular",
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 9
+      },
+      "interval": "1d",
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "duckdb-minio"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "displayName": "${__field.labels.series}",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "showPoints": "always",
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "right"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "transformations": [
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "series"
+            ],
+            "keepFields": false,
+            "naming": {
+              "asLabels": true
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "motherduck-duckdb-datasource",
+            "uid": "duckdb-minio"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_fee_unit_cost/monthly_parse/*.parquet')\n  WHERE ('__all' IN ($asset) OR asset IN ($asset))\n    AND ('__all' IN ($market) OR market IN ($market))\n    AND $__timeFilter(valid_from::TIMESTAMP)\n)\nSELECT r.valid_from::TIMESTAMP AS time,\n  concat_ws(' · ', r.asset, 'mkt ' || r.market, CASE WHEN r.day_trade THEN 'day trade' END, CASE WHEN r.trade_type <> '0' THEN 'tx ' || r.trade_type END, CASE WHEN r.strategy_leg IS NOT NULL THEN 'leg ' || r.strategy_leg END) AS series,\n  ((t.exchange_fee + t.registration_fee)\n    / nullif(r.exchange_fee + r.registration_fee, 0))::DOUBLE AS day_trade_ratio\nFROM d r\nJOIN d t\n  ON t.rpt_dt = r.rpt_dt\n  AND t.segment = r.segment\n  AND t.market = r.market\n  AND t.asset = r.asset\n  AND t.trade_type = r.trade_type\n  AND t.strategy_leg IS NOT DISTINCT FROM r.strategy_leg\n  AND t.day_trade\nWHERE NOT r.day_trade\nORDER BY time, series"
+        }
+      ]
+    }
+  ]
+}
