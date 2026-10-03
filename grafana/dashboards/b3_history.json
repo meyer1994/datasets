@@ -4,8 +4,23 @@
   "tags": ["b3"],
   "timezone": "America/Sao_Paulo",
   "editable": true,
+  "graphTooltip": 1,
   "schemaVersion": 39,
-  "time": { "from": "now-30d", "to": "now" },
+  "time": { "from": "now-30d/d", "to": "now/d" },
+  "timepicker": {
+    "refresh_intervals": [],
+    "quick_ranges": [
+      { "display": "Today", "from": "now/d", "to": "now/d" },
+      { "display": "Last 7 days", "from": "now-7d/d", "to": "now/d" },
+      { "display": "Last 30 days", "from": "now-30d/d", "to": "now/d" },
+      { "display": "Last 90 days", "from": "now-90d/d", "to": "now/d" },
+      { "display": "Last 6 months", "from": "now-6M/d", "to": "now/d" },
+      { "display": "Last 1 year", "from": "now-1y/d", "to": "now/d" },
+      { "display": "Last 2 years", "from": "now-2y/d", "to": "now/d" },
+      { "display": "Month to date", "from": "now/M", "to": "now/d" },
+      { "display": "Year to date", "from": "now/y", "to": "now/d" }
+    ]
+  },
   "refresh": "",
   "templating": {
     "list": [
@@ -106,6 +121,7 @@
       "repeat": "ticker",
       "repeatDirection": "h",
       "maxPerRow": 2,
+      "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": { "unit": "currencyBRL" },
@@ -136,6 +152,7 @@
       "type": "timeseries",
       "title": "Daily volume by market",
       "gridPos": { "x": 0, "y": 14, "w": 24, "h": 9 },
+      "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {
