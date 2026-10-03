@@ -1,0 +1,187 @@
+{
+  "uid": "b3-instruments",
+  "title": "B3 - Instruments",
+  "tags": ["b3"],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": { "from": "now-30d/d", "to": "now/d" },
+  "timepicker": {
+    "refresh_intervals": [],
+    "quick_ranges": [
+      { "display": "Today", "from": "now/d", "to": "now/d" },
+      { "display": "Last 7 days", "from": "now-7d/d", "to": "now/d" },
+      { "display": "Last 30 days", "from": "now-30d/d", "to": "now/d" },
+      { "display": "Last 90 days", "from": "now-90d/d", "to": "now/d" },
+      { "display": "Last 6 months", "from": "now-6M/d", "to": "now/d" },
+      { "display": "Last 1 year", "from": "now-1y/d", "to": "now/d" },
+      { "display": "Last 2 years", "from": "now-2y/d", "to": "now/d" },
+      { "display": "Month to date", "from": "now/M", "to": "now/d" },
+      { "display": "Year to date", "from": "now/y", "to": "now/d" }
+    ]
+  },
+  "refresh": "",
+  "templating": {
+    "list": [
+      {
+        "name": "record_type",
+        "label": "Record type",
+        "type": "query",
+        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+        "query": "SELECT DISTINCT record_type\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "definition": "SELECT DISTINCT record_type\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "'__all'",
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
+        "sort": 0
+      },
+      {
+        "name": "asset",
+        "label": "Asset",
+        "type": "query",
+        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+        "query": "SELECT DISTINCT asset\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND ('__all' IN ($record_type) OR record_type IN ($record_type))\nORDER BY 1",
+        "definition": "SELECT DISTINCT asset\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND ('__all' IN ($record_type) OR record_type IN ($record_type))\nORDER BY 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "'__all'",
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
+        "sort": 0
+      },
+      {
+        "name": "search",
+        "label": "Ticker starts with",
+        "type": "textbox",
+        "query": "",
+        "current": { "text": "", "value": "" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Registered instruments per day by record type",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.record_type}",
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["record_type"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, record_type, count(*) AS instruments\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND ('__all' IN ($record_type) OR record_type IN ($record_type))\n  AND ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('$search' = '' OR ticker ILIKE '$search%')\nGROUP BY ALL\nORDER BY time, record_type"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Upcoming expirations, next 30 days (latest day in range)",
+      "gridPos": { "x": 0, "y": 9, "w": 14, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT expiration_date::VARCHAR AS expiration_date,\n  asset,\n  record_type,\n  count(*) AS instruments,\n  count(*) FILTER (WHERE option_type = 'CALL') AS calls,\n  count(*) FILTER (WHERE option_type = 'PUTT') AS puts,\n  min(strike_price)::DOUBLE AS min_strike,\n  max(strike_price)::DOUBLE AS max_strike\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND expiration_date BETWEEN trad_dt AND trad_dt + INTERVAL 30 DAY\n  AND ('__all' IN ($record_type) OR record_type IN ($record_type))\n  AND ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('$search' = '' OR ticker ILIKE '$search%')\nGROUP BY ALL\nORDER BY expiration_date, instruments DESC\nLIMIT 500"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Assets with most listed options (latest day in range)",
+      "gridPos": { "x": 14, "y": 9, "w": 10, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "options" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT asset,\n  count(*) AS options,\n  count(*) FILTER (WHERE option_type = 'CALL') AS calls,\n  count(*) FILTER (WHERE option_type = 'PUTT') AS puts,\n  count(DISTINCT expiration_date) AS expirations\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND option_type IS NOT NULL\nGROUP BY ALL\nORDER BY options DESC\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "New listings: trading start in range (latest day in range)",
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 10 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "strike_price" }, "properties": [{ "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trading_start_date::VARCHAR AS trading_start_date,\n  ticker,\n  record_type,\n  asset,\n  description,\n  isin,\n  expiration_date::VARCHAR AS expiration_date,\n  option_type,\n  strike_price::DOUBLE AS strike_price\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND $__timeFilter(trading_start_date::TIMESTAMP)\n  AND ('__all' IN ($record_type) OR record_type IN ($record_type))\n  AND ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('$search' = '' OR ticker ILIKE '$search%')\nORDER BY trading_start_date DESC, ticker\nLIMIT 1000"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Instrument lookup (latest day in range)",
+      "gridPos": { "x": 0, "y": 31, "w": 24, "h": 14 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "^(strike_price|last_price)$" }, "properties": [{ "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker,\n  record_type,\n  security_category,\n  instrument_id,\n  isin,\n  asset,\n  description,\n  corporate_name,\n  specification_code,\n  governance,\n  cfi_code,\n  currency,\n  expiration_date::VARCHAR AS expiration_date,\n  option_type,\n  option_style,\n  strike_price::DOUBLE AS strike_price,\n  underlying_instrument_id,\n  contract_multiplier::DOUBLE AS contract_multiplier,\n  round_lot,\n  last_price::DOUBLE AS last_price,\n  trading_start_date::VARCHAR AS trading_start_date,\n  trading_end_date::VARCHAR AS trading_end_date\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND ('__all' IN ($record_type) OR record_type IN ($record_type))\n  AND ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('$search' = '' OR ticker ILIKE '$search%')\nORDER BY ticker\nLIMIT 1000"
+        }
+      ]
+    }
+  ]
+}
