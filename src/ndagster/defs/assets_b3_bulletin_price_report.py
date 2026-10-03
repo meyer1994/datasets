@@ -71,18 +71,18 @@ ORDER BY
 """
 
 
-def latest_report(archive: bytes) -> tuple[str, bytes]:
-    """Return the name and content of the most recent BVBG.086.01 XML.
+def latest_report(archive: bytes, prefix: str) -> tuple[str, bytes]:
+    """Return the name and content of the most recent report XML.
 
-    The download is a zip wrapping PRyymmdd.zip, which holds one XML per
-    revision of the session's report; names sort chronologically.
+    B3 bulletin downloads are a zip wrapping e.g. PRyymmdd.zip, which holds
+    one XML per revision of the session's report; names sort chronologically.
     """
     with zipfile.ZipFile(io.BytesIO(archive)) as outer:
         (inner_name,) = outer.namelist()
         inner_bytes = outer.read(inner_name)
 
     with zipfile.ZipFile(io.BytesIO(inner_bytes)) as inner:
-        names = sorted(n for n in inner.namelist() if n.startswith("BVBG.086.01_"))
+        names = sorted(n for n in inner.namelist() if n.startswith(prefix))
         return names[-1], inner.read(names[-1])
 
 
@@ -168,7 +168,7 @@ def daily_download(context: dg.AssetExecutionContext) -> bytes:
 def daily_parse(
     context: dg.AssetExecutionContext, daily_download: bytes
 ) -> pl.DataFrame:
-    name, xml = latest_report(daily_download)
+    name, xml = latest_report(daily_download, "BVBG.086.01_")
     context.log.debug("Parsing %s", name)
 
     with tempfile.TemporaryDirectory() as tmp:
