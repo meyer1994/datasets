@@ -1,0 +1,266 @@
+{
+  "uid": "bacen-household-credit-rate",
+  "title": "BACEN - Average credit rate (individuals, total)",
+  "tags": ["bacen"],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": { "from": "now-5y/M", "to": "now/M" },
+  "timepicker": {
+    "refresh_intervals": [],
+    "quick_ranges": [
+      { "display": "Last 6 months", "from": "now-6M/M", "to": "now/M" },
+      { "display": "Last 1 year", "from": "now-1y/M", "to": "now/M" },
+      { "display": "Last 2 years", "from": "now-2y/M", "to": "now/M" },
+      { "display": "Last 5 years", "from": "now-5y/M", "to": "now/M" },
+      { "display": "Last 10 years", "from": "now-10y/M", "to": "now/M" },
+      { "display": "Year to date", "from": "now/y", "to": "now/M" },
+      { "display": "Previous year", "from": "now-1y/y", "to": "now-1y/y" }
+    ]
+  },
+  "refresh": "",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Latest annual rate",
+      "description": "Average interest rate of credit operations to individuals (total, % a.a.) in the latest reference month in range. SGS 20716.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT arg_max(value, ref_dt)::DOUBLE AS rate\nFROM read_parquet('s3://uploads/bacen_household_credit_rate/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Change vs 12 months earlier",
+      "description": "Latest rate in range minus the rate of the same month one year earlier, in percentage points.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: p.p.",
+          "decimals": 2,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0 }] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value\n  FROM read_parquet('s3://uploads/bacen_household_credit_rate/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nl AS (\n  SELECT max(ref_dt) AS ref_dt\n  FROM d\n  WHERE $__timeFilter(ref_dt::TIMESTAMP)\n)\nSELECT (c.value - p.value)::DOUBLE AS yoy_change\nFROM l\nJOIN d c ON c.ref_dt = l.ref_dt\nJOIN d p ON p.ref_dt = (l.ref_dt - INTERVAL 12 MONTH)::DATE"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Range min / max",
+      "description": "Lowest and highest monthly rate (% a.a.) in the selected range.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value_and_name" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  min(value)::DOUBLE AS \"Min\",\n  max(value)::DOUBLE AS \"Max\"\nFROM read_parquet('s3://uploads/bacen_household_credit_rate/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Latest reference month",
+      "description": "Most recent reference month in range. BACEN publishes this series with a lag of about two months.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT strftime(max(ref_dt), '%Y-%m') AS ref_month\nFROM read_parquet('s3://uploads/bacen_household_credit_rate/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Average annual rate",
+      "description": "Monthly average interest rate of credit operations to individuals (total, % a.a.) and its trailing 12-month average.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "12-month average" }, "properties": [{ "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }, { "id": "custom.lineInterpolation", "value": "linear" }] }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "min", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value\n  FROM read_parquet('s3://uploads/bacen_household_credit_rate/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 12 MONTH\n    AND ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nm AS (\n  SELECT\n    ref_dt,\n    value,\n    avg(value) OVER w AS avg_12m,\n    count(*) OVER w AS months\n  FROM d\n  WINDOW w AS (ORDER BY ref_dt RANGE BETWEEN INTERVAL 11 MONTH PRECEDING AND CURRENT ROW)\n)\nSELECT\n  ref_dt::TIMESTAMP AS time,\n  value::DOUBLE AS \"Rate\",\n  CASE WHEN months = 12 THEN avg_12m::DOUBLE END AS \"12-month average\"\nFROM m\nWHERE $__timeFilter(ref_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Month-over-month change",
+      "description": "Rate minus the previous month's rate, in percentage points.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: p.p.",
+          "decimals": 2,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0 }] },
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "showPoints": "never", "gradientMode": "scheme" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "mean", "sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value\n  FROM read_parquet('s3://uploads/bacen_household_credit_rate/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 2 MONTH\n    AND ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nc AS (\n  SELECT\n    ref_dt,\n    CASE WHEN lag(ref_dt) OVER w = (ref_dt - INTERVAL 1 MONTH)::DATE THEN value - lag(value) OVER w END AS change\n  FROM d\n  WINDOW w AS (ORDER BY ref_dt)\n)\nSELECT ref_dt::TIMESTAMP AS time, change::DOUBLE AS \"Month-over-month\"\nFROM c\nWHERE change IS NOT NULL\n  AND $__timeFilter(ref_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Year-over-year change",
+      "description": "Rate minus the rate of the same month one year earlier, in percentage points.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: p.p.",
+          "decimals": 2,
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 20, "thresholdsStyle": { "mode": "line" } },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "transparent", "value": null }, { "color": "text", "value": 0 }] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "min", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value\n  FROM read_parquet('s3://uploads/bacen_household_credit_rate/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 13 MONTH\n    AND ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n)\nSELECT c.ref_dt::TIMESTAMP AS time, (c.value - p.value)::DOUBLE AS \"Year-over-year\"\nFROM d c\nJOIN d p ON p.ref_dt = (c.ref_dt - INTERVAL 12 MONTH)::DATE\nWHERE $__timeFilter(c.ref_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Yearly summary",
+      "description": "Calendar-year statistics (% a.a.) for every year overlapping the range, using all published months of each year; change is the last value vs the previous year's last value.",
+      "gridPos": { "x": 0, "y": 23, "w": 13, "h": 11 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 2, "unit": "percent" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "year" }, "properties": [{ "id": "unit", "value": "none" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "months" }, "properties": [{ "id": "unit", "value": "none" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "last_month" }, "properties": [{ "id": "unit", "value": "string" }] },
+          { "matcher": { "id": "byName", "options": "change" }, "properties": [{ "id": "unit", "value": "suffix: p.p." }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH y AS (\n  SELECT\n    year(ref_dt) AS year,\n    count(*) AS months,\n    avg(value) AS average,\n    min(value) AS min,\n    max(value) AS max,\n    arg_max(value, ref_dt) AS last,\n    max(ref_dt) AS last_dt\n  FROM read_parquet('s3://uploads/bacen_household_credit_rate/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  GROUP BY year\n)\nSELECT\n  year,\n  months,\n  average::DOUBLE AS average,\n  min::DOUBLE AS min,\n  max::DOUBLE AS max,\n  last::DOUBLE AS end_of_year,\n  strftime(last_dt, '%Y-%m') AS last_month,\n  (last - lag(last) OVER (ORDER BY year))::DOUBLE AS change\nFROM y\nQUALIFY year >= year($__timeFrom()::TIMESTAMP)\nORDER BY year DESC"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Monthly values",
+      "description": "Latest 24 reference months in range with month-over-month and year-over-year changes in percentage points.",
+      "gridPos": { "x": 13, "y": 23, "w": 11, "h": 11 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "rate" }, "properties": [{ "id": "unit", "value": "percent" }] },
+          { "matcher": { "id": "byRegexp", "options": "_change$" }, "properties": [{ "id": "unit", "value": "suffix: p.p." }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value\n  FROM read_parquet('s3://uploads/bacen_household_credit_rate/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n)\nSELECT\n  strftime(c.ref_dt, '%Y-%m') AS month,\n  c.value::DOUBLE AS rate,\n  (c.value - m.value)::DOUBLE AS mom_change,\n  (c.value - y.value)::DOUBLE AS yoy_change\nFROM d c\nLEFT JOIN d m ON m.ref_dt = (c.ref_dt - INTERVAL 1 MONTH)::DATE\nLEFT JOIN d y ON y.ref_dt = (c.ref_dt - INTERVAL 12 MONTH)::DATE\nWHERE $__timeFilter(c.ref_dt::TIMESTAMP)\nORDER BY c.ref_dt DESC\nLIMIT 24"
+        }
+      ]
+    }
+  ]
+}
