@@ -1,0 +1,296 @@
+{
+  "uid": "bacen-credit-default",
+  "title": "BACEN - Credit default rate (total portfolio)",
+  "tags": ["bacen"],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": { "from": "now-5y/M", "to": "now/M" },
+  "timepicker": {
+    "refresh_intervals": [],
+    "quick_ranges": [
+      { "display": "Last 1 year", "from": "now-1y/M", "to": "now/M" },
+      { "display": "Last 2 years", "from": "now-2y/M", "to": "now/M" },
+      { "display": "Last 3 years", "from": "now-3y/M", "to": "now/M" },
+      { "display": "Last 5 years", "from": "now-5y/M", "to": "now/M" },
+      { "display": "Last 10 years", "from": "now-10y/M", "to": "now/M" },
+      { "display": "Year to date", "from": "now/y", "to": "now/M" },
+      { "display": "Previous year", "from": "now-1y/y", "to": "now-1y/y" }
+    ]
+  },
+  "refresh": "",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Latest default rate",
+      "description": "Share of the total credit portfolio (SGS 21082) overdue for more than 90 days in the latest month in range. Colour bands (green < 3%, orange < 4%, red ≥ 4%) are display thresholds, not official ones.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 3 }, { "color": "red", "value": 4 }] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT arg_max(value, ref_dt)::DOUBLE AS default_rate\nFROM read_parquet('s3://uploads/bacen_credit_default/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Change vs 12 months earlier",
+      "description": "Latest default rate in range minus the rate 12 months before it, in percentage points (red = deterioration).",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: p.p.",
+          "decimals": 2,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "text", "value": 0 }, { "color": "red", "value": 0.005 }] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value\n  FROM read_parquet('s3://uploads/bacen_credit_default/monthly_parse/*.parquet')\n),\nl AS (\n  SELECT max(ref_dt) AS ref_dt\n  FROM d\n  WHERE $__timeFilter(ref_dt::TIMESTAMP)\n)\nSELECT (cur.value - prev.value)::DOUBLE AS yoy_change\nFROM l\nJOIN d AS cur ON cur.ref_dt = l.ref_dt\nJOIN d AS prev ON prev.ref_dt = (l.ref_dt - INTERVAL 12 MONTH)::DATE"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Range low → high",
+      "description": "Lowest and highest default rate in range, with the month each occurred.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT printf(\n  '%.2f%% (%s) → %.2f%% (%s)',\n  min(value)::DOUBLE,\n  strftime(arg_min(ref_dt, value), '%Y-%m'),\n  max(value)::DOUBLE,\n  strftime(arg_max(ref_dt, value), '%Y-%m')\n) AS range\nFROM read_parquet('s3://uploads/bacen_credit_default/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Latest reference month",
+      "description": "Most recent month with a published value in range; SGS 21082 is published with a ~2 month lag.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT strftime(max(ref_dt), '%Y-%m') AS latest\nFROM read_parquet('s3://uploads/bacen_credit_default/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Default rate",
+      "description": "Monthly share of the total credit portfolio overdue for more than 90 days, with its trailing 12-month average (shown once 12 months are available). Dashed lines mark the 3% and 4% display thresholds.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "color": { "mode": "palette-classic" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 3 }, { "color": "red", "value": 4 }] },
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 2, "showPoints": "never", "thresholdsStyle": { "mode": "dashed" } }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "12-month average" },
+            "properties": [
+              { "id": "custom.lineWidth", "value": 1 },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "text" } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "min", "max", "mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    ref_dt,\n    value,\n    avg(value) OVER w AS avg_12m,\n    count(*) OVER w AS months\n  FROM read_parquet('s3://uploads/bacen_credit_default/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 12 MONTH\n    AND ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  WINDOW w AS (ORDER BY ref_dt RANGE BETWEEN INTERVAL 11 MONTH PRECEDING AND CURRENT ROW)\n)\nSELECT\n  ref_dt::TIMESTAMP AS time,\n  value::DOUBLE AS \"Default rate\",\n  CASE WHEN months = 12 THEN avg_12m::DOUBLE END AS \"12-month average\"\nFROM d\nWHERE $__timeFilter(ref_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Month-over-month change",
+      "description": "Default rate minus the previous month's, in percentage points (red = deterioration, green = improvement).",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: p.p.",
+          "decimals": 2,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0 }] },
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "gradientMode": "scheme", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min", "max", "sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value\n  FROM read_parquet('s3://uploads/bacen_credit_default/monthly_parse/*.parquet')\n)\nSELECT\n  cur.ref_dt::TIMESTAMP AS time,\n  (cur.value - prev.value)::DOUBLE AS \"Monthly change\"\nFROM d AS cur\nJOIN d AS prev ON prev.ref_dt = (cur.ref_dt - INTERVAL 1 MONTH)::DATE\nWHERE $__timeFilter(cur.ref_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Year-over-year change",
+      "description": "Default rate minus the rate 12 months earlier, in percentage points; above zero means the portfolio's credit quality worsened over the year.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: p.p.",
+          "decimals": 2,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0 }] },
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 2, "showPoints": "never", "fillOpacity": 20, "gradientMode": "scheme", "thresholdsStyle": { "mode": "line" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value\n  FROM read_parquet('s3://uploads/bacen_credit_default/monthly_parse/*.parquet')\n)\nSELECT\n  cur.ref_dt::TIMESTAMP AS time,\n  (cur.value - prev.value)::DOUBLE AS \"Change vs 12 months earlier\"\nFROM d AS cur\nJOIN d AS prev ON prev.ref_dt = (cur.ref_dt - INTERVAL 12 MONTH)::DATE\nWHERE $__timeFilter(cur.ref_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Yearly summary",
+      "description": "Average, low, high and end-of-year default rate per calendar year overlapping the range; for the current year end_of_year is the latest published month. change_pp is end_of_year minus the previous year's end_of_year.",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 10 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 2, "unit": "percent" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "months" }, "properties": [{ "id": "unit", "value": "none" }, { "id": "decimals", "value": 0 }] },
+          {
+            "matcher": { "id": "byName", "options": "change_pp" },
+            "properties": [
+              { "id": "unit", "value": "suffix: p.p." },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "text", "value": 0 }, { "color": "red", "value": 0.005 }] } },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH y AS (\n  SELECT\n    year(ref_dt) AS year,\n    count(*) AS months,\n    avg(value) AS average,\n    min(value) AS low,\n    max(value) AS high,\n    arg_max(value, ref_dt) AS end_of_year\n  FROM read_parquet('s3://uploads/bacen_credit_default/monthly_parse/*.parquet')\n  GROUP BY year\n),\nc AS (\n  SELECT *, end_of_year - lag(end_of_year) OVER (ORDER BY year) AS change_pp\n  FROM y\n)\nSELECT\n  year::VARCHAR AS year,\n  months,\n  average::DOUBLE AS average,\n  low::DOUBLE AS low,\n  high::DOUBLE AS high,\n  end_of_year::DOUBLE AS end_of_year,\n  change_pp::DOUBLE AS change_pp\nFROM c\nWHERE c.year BETWEEN year($__timeFrom()::TIMESTAMP) AND year($__timeTo()::TIMESTAMP)\nORDER BY c.year DESC"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Monthly values",
+      "description": "Every published month in range with its month-over-month and year-over-year changes in percentage points.",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 10 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "default_rate" }, "properties": [{ "id": "unit", "value": "percent" }] },
+          {
+            "matcher": { "id": "byRegexp", "options": "_pp$" },
+            "properties": [
+              { "id": "unit", "value": "suffix: p.p." },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "text", "value": 0 }, { "color": "red", "value": 0.005 }] } },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value\n  FROM read_parquet('s3://uploads/bacen_credit_default/monthly_parse/*.parquet')\n)\nSELECT\n  strftime(cur.ref_dt, '%Y-%m') AS month,\n  cur.value::DOUBLE AS default_rate,\n  (cur.value - m1.value)::DOUBLE AS mom_change_pp,\n  (cur.value - m12.value)::DOUBLE AS yoy_change_pp\nFROM d AS cur\nLEFT JOIN d AS m1 ON m1.ref_dt = (cur.ref_dt - INTERVAL 1 MONTH)::DATE\nLEFT JOIN d AS m12 ON m12.ref_dt = (cur.ref_dt - INTERVAL 12 MONTH)::DATE\nWHERE $__timeFilter(cur.ref_dt::TIMESTAMP)\nORDER BY cur.ref_dt DESC"
+        }
+      ]
+    }
+  ]
+}
