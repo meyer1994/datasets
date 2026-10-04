@@ -25,17 +25,31 @@
   "templating": {
     "list": [
       {
+        "name": "indicator_type",
+        "label": "Type",
+        "type": "custom",
+        "query": "Indicator (1) : 1, Reference value / spread (0) : 0, Currency type (3) : 3",
+        "current": { "text": ["Indicator (1)"], "value": ["1"] },
+        "multi": true,
+        "includeAll": false
+      },
+      {
         "name": "asset",
-        "label": "Indicator asset",
+        "label": "Asset",
         "type": "query",
         "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "SELECT DISTINCT asset\nFROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "definition": "SELECT DISTINCT asset\nFROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "query": "SELECT asset\nFROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\nWHERE indicator_type_code IN ($indicator_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY asset\nORDER BY count(DISTINCT instrument_id) DESC, asset\nLIMIT 1000",
+        "definition": "SELECT asset\nFROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\nWHERE indicator_type_code IN ($indicator_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY asset\nORDER BY count(DISTINCT instrument_id) DESC, asset\nLIMIT 1000",
         "refresh": 2,
+        "sort": 0,
+        "current": {
+          "selected": true,
+          "text": ["FFN", "PLD", "CMO", "DOL", "BGI", "EUR", "IAP", "IGM"],
+          "value": ["FFN", "PLD", "CMO", "DOL", "BGI", "EUR", "IAP", "IGM"]
+        },
         "multi": true,
         "includeAll": false,
-        "current": { "selected": true, "text": ["DOL", "EUR"], "value": ["DOL", "EUR"] },
-        "sort": 0
+        "allowCustomValue": true
       }
     ]
   },
@@ -43,16 +57,76 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "Registered indicators (latest day in range)",
-      "description": "Indicator instruments and assets covered on the latest day.",
-      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 8 },
+      "title": "Indicator instruments",
+      "description": "Indicator instruments of the selected assets and types on the latest day in the range.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND indicator_type_code IN ($indicator_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(*)::BIGINT AS instruments\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Added in range",
+      "description": "Indicator instruments of the selected assets that appeared vs the previous trading day, summed over the range.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH days AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nd AS (\n  SELECT trad_dt, asset, instrument_id, description, indicator_description\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND indicator_type_code IN ($indicator_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nr AS (\n  SELECT d.*, days.prev_dt, days.next_dt,\n    lag(d.trad_dt) OVER w AS inst_prev,\n    lead(d.trad_dt) OVER w AS inst_next\n  FROM d JOIN days ON days.trad_dt = d.trad_dt\n  WINDOW w AS (PARTITION BY d.instrument_id ORDER BY d.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS dt, 'added' AS change, asset, description, indicator_description, 1 AS added, 0 AS removed\n  FROM r\n  WHERE prev_dt IS NOT NULL AND inst_prev IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt, 'removed', asset, description, indicator_description, 0, 1\n  FROM r\n  WHERE next_dt IS NOT NULL AND inst_next IS DISTINCT FROM next_dt\n)\nSELECT coalesce(sum(added), 0)::BIGINT AS added\nFROM ev\nWHERE $__timeFilter(dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Removed in range",
+      "description": "Indicator instruments of the selected assets that disappeared vs the previous trading day, summed over the range.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH days AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nd AS (\n  SELECT trad_dt, asset, instrument_id, description, indicator_description\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND indicator_type_code IN ($indicator_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nr AS (\n  SELECT d.*, days.prev_dt, days.next_dt,\n    lag(d.trad_dt) OVER w AS inst_prev,\n    lead(d.trad_dt) OVER w AS inst_next\n  FROM d JOIN days ON days.trad_dt = d.trad_dt\n  WINDOW w AS (PARTITION BY d.instrument_id ORDER BY d.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS dt, 'added' AS change, asset, description, indicator_description, 1 AS added, 0 AS removed\n  FROM r\n  WHERE prev_dt IS NOT NULL AND inst_prev IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt, 'removed', asset, description, indicator_description, 0, 1\n  FROM r\n  WHERE next_dt IS NOT NULL AND inst_next IS DISTINCT FROM next_dt\n)\nSELECT coalesce(sum(removed), 0)::BIGINT AS removed\nFROM ev\nWHERE $__timeFilter(dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Latest trading day",
+      "description": "Most recent trading day with data for the selected assets in the range.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false },
         "colorMode": "none",
         "graphMode": "none",
-        "textMode": "value_and_name"
+        "textMode": "value"
       },
       "targets": [
         {
@@ -61,30 +135,31 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(*)::BIGINT AS indicators, count(DISTINCT asset)::BIGINT AS assets\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
+          "rawSql": "SELECT strftime(max(trad_dt), '%Y-%m-%d') AS latest\nFROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND indicator_type_code IN ($indicator_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)"
         }
       ]
     },
     {
-      "id": 2,
+      "id": 10,
       "type": "timeseries",
-      "title": "Registered indicators per day",
-      "description": "Indicator instruments per day, stacked by asset.",
-      "gridPos": { "x": 6, "y": 0, "w": 18, "h": 8 },
+      "title": "Indicator instruments per asset",
+      "description": "Daily number of indicator instruments per selected asset.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
           "displayName": "${__field.labels.asset}",
-          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
         },
         "overrides": []
       },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "transformations": [
-        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
-      ],
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
       "targets": [
         {
           "refId": "A",
@@ -92,16 +167,306 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, count(*)::BIGINT AS indicators\nFROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, count(*)::BIGINT AS instruments\nFROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND indicator_type_code IN ($indicator_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
         }
       ]
     },
     {
-      "id": 3,
+      "id": 11,
+      "type": "timeseries",
+      "title": "Change since start of range",
+      "description": "Indicator instruments minus each asset's count on its first day in the range.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH daily AS (\n  SELECT trad_dt::TIMESTAMP AS time, asset, count(*)::BIGINT AS instruments\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND indicator_type_code IN ($indicator_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT time, asset, instruments - first_value(instruments) OVER (PARTITION BY asset ORDER BY time) AS change\nFROM daily\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Growth since start of range",
+      "description": "Indicator instruments relative to each asset's count on its first day in the range.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH daily AS (\n  SELECT trad_dt::TIMESTAMP AS time, asset, count(*)::BIGINT AS instruments\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND indicator_type_code IN ($indicator_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT time, asset, instruments / nullif(first_value(instruments) OVER (PARTITION BY asset ORDER BY time), 0) - 1 AS growth\nFROM daily\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Daily net change",
+      "description": "Indicator instruments vs the previous trading day's count, per selected asset.",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH daily AS (\n  SELECT trad_dt::TIMESTAMP AS time, asset, count(*)::BIGINT AS instruments\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND indicator_type_code IN ($indicator_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  GROUP BY ALL\n),\nchanges AS (\n  SELECT time, asset, instruments - lag(instruments) OVER (PARTITION BY asset ORDER BY time) AS change\n  FROM daily\n)\nSELECT time, asset, change\nFROM changes\nWHERE $__timeFilter(time)\n  AND change IS NOT NULL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Share of all indicator instruments",
+      "description": "Each selected asset's share of all indicator instruments of the selected types per day.",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH daily AS (\n  SELECT trad_dt::TIMESTAMP AS time, asset, count(*)::BIGINT AS instruments\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE indicator_type_code IN ($indicator_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT time, asset, share\nFROM (\n  SELECT time, asset, instruments / sum(instruments) OVER (PARTITION BY time) AS share\n  FROM daily\n)\nWHERE asset IN ($asset)\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Added per day",
+      "description": "Indicator instruments that appeared vs the previous trading day, per selected asset.",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH days AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nd AS (\n  SELECT trad_dt, asset, instrument_id, description, indicator_description\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND indicator_type_code IN ($indicator_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nr AS (\n  SELECT d.*, days.prev_dt, days.next_dt,\n    lag(d.trad_dt) OVER w AS inst_prev,\n    lead(d.trad_dt) OVER w AS inst_next\n  FROM d JOIN days ON days.trad_dt = d.trad_dt\n  WINDOW w AS (PARTITION BY d.instrument_id ORDER BY d.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS dt, 'added' AS change, asset, description, indicator_description, 1 AS added, 0 AS removed\n  FROM r\n  WHERE prev_dt IS NOT NULL AND inst_prev IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt, 'removed', asset, description, indicator_description, 0, 1\n  FROM r\n  WHERE next_dt IS NOT NULL AND inst_next IS DISTINCT FROM next_dt\n)\n,\ngrid AS (\n  SELECT days.trad_dt AS dt, a.asset\n  FROM days, (SELECT DISTINCT asset FROM d) a\n  WHERE days.prev_dt IS NOT NULL\n)\nSELECT grid.dt::TIMESTAMP AS time, grid.asset, coalesce(sum(ev.added), 0)::BIGINT AS added\nFROM grid\nLEFT JOIN ev ON ev.dt = grid.dt AND ev.asset = grid.asset\nWHERE $__timeFilter(grid.dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, grid.asset"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Removed per day",
+      "description": "Indicator instruments that disappeared vs the previous trading day, per selected asset.",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH days AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nd AS (\n  SELECT trad_dt, asset, instrument_id, description, indicator_description\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND indicator_type_code IN ($indicator_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nr AS (\n  SELECT d.*, days.prev_dt, days.next_dt,\n    lag(d.trad_dt) OVER w AS inst_prev,\n    lead(d.trad_dt) OVER w AS inst_next\n  FROM d JOIN days ON days.trad_dt = d.trad_dt\n  WINDOW w AS (PARTITION BY d.instrument_id ORDER BY d.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS dt, 'added' AS change, asset, description, indicator_description, 1 AS added, 0 AS removed\n  FROM r\n  WHERE prev_dt IS NOT NULL AND inst_prev IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt, 'removed', asset, description, indicator_description, 0, 1\n  FROM r\n  WHERE next_dt IS NOT NULL AND inst_next IS DISTINCT FROM next_dt\n)\n,\ngrid AS (\n  SELECT days.trad_dt AS dt, a.asset\n  FROM days, (SELECT DISTINCT asset FROM d) a\n  WHERE days.prev_dt IS NOT NULL\n)\nSELECT grid.dt::TIMESTAMP AS time, grid.asset, coalesce(sum(ev.removed), 0)::BIGINT AS removed\nFROM grid\nLEFT JOIN ev ON ev.dt = grid.dt AND ev.asset = grid.asset\nWHERE $__timeFilter(grid.dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, grid.asset"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Indicator instruments, stacked by asset",
+      "description": "Daily indicator instruments of the selected assets, stacked so the top edge is the total.",
+      "gridPos": { "x": 0, "y": 41, "w": 12, "h": 10 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.asset}",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "showPoints": "never",
+            "fillOpacity": 60,
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, count(*)::BIGINT AS instruments\nFROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND indicator_type_code IN ($indicator_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Indicator instruments by type",
+      "description": "Daily indicator instruments of the selected assets per indicator type code, stacked; ignores the type filter.",
+      "gridPos": { "x": 12, "y": 41, "w": 12, "h": 10 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "showPoints": "never",
+            "fillOpacity": 60,
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  trad_dt::TIMESTAMP AS time,\n  count(*) FILTER (WHERE indicator_type_code = '1')::BIGINT AS \"Indicator (1)\",\n  count(*) FILTER (WHERE indicator_type_code = '0')::BIGINT AS \"Reference value / spread (0)\",\n  count(*) FILTER (WHERE indicator_type_code = '3')::BIGINT AS \"Currency type (3)\"\nFROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY time\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "table",
+      "title": "Selected assets (range)",
+      "description": "Indicator instrument counts per selected asset at the start and end of the range, with the codes they use.",
+      "gridPos": { "x": 0, "y": 51, "w": 24, "h": 8 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH b AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\nd AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND indicator_type_code IN ($indicator_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  asset,\n  arg_max(instrument_name, trad_dt) AS instrument_name,\n  count(*) FILTER (WHERE trad_dt = b.first_day)::BIGINT AS at_start,\n  count(*) FILTER (WHERE trad_dt = b.last_day)::BIGINT AS latest,\n  count(*) FILTER (WHERE trad_dt = b.last_day)::BIGINT - count(*) FILTER (WHERE trad_dt = b.first_day)::BIGINT AS net_change,\n  count(DISTINCT instrument_id)::BIGINT AS seen_in_range,\n  count(DISTINCT trad_dt)::BIGINT AS days,\n  string_agg(DISTINCT indicator_type_code, ', ' ORDER BY indicator_type_code) AS type_codes,\n  string_agg(DISTINCT base_code, ', ' ORDER BY base_code) AS base_codes,\n  string_agg(DISTINCT decimal_precision::VARCHAR, ', ' ORDER BY decimal_precision::VARCHAR) AS decimal_precisions\nFROM d, b\nGROUP BY asset\nORDER BY latest DESC, asset"
+        }
+      ]
+    },
+    {
+      "id": 31,
       "type": "table",
       "title": "Indicator register (latest day in range)",
-      "description": "All indicator instruments on the latest day.",
-      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 12 },
+      "description": "All indicator instruments of the selected assets and types on the latest day.",
+      "gridPos": { "x": 0, "y": 59, "w": 24, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "options": { "showHeader": true },
@@ -112,16 +477,16 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT asset,\n  description,\n  indicator_description,\n  instrument_name,\n  instrument_id::VARCHAR AS instrument_id,\n  indicator_type_code,\n  base_code,\n  value_type_code,\n  decimal_precision,\n  maturity_code\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY asset, description"
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND indicator_type_code IN ($indicator_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT asset,\n  description,\n  indicator_description,\n  instrument_name,\n  instrument_id::VARCHAR AS instrument_id,\n  indicator_type_code,\n  base_code,\n  value_type_code,\n  entry_reference_code,\n  decimal_precision,\n  maturity_code\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY asset, description"
         }
       ]
     },
     {
-      "id": 4,
+      "id": 32,
       "type": "table",
-      "title": "Indicators added / removed (within range)",
-      "description": "Indicator instruments added or removed within the range.",
-      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 12 },
+      "title": "Indicators added / removed (range)",
+      "description": "Every add or remove event of the selected assets in the range, newest first.",
+      "gridPos": { "x": 0, "y": 71, "w": 12, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "options": { "showHeader": true },
@@ -132,16 +497,36 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\nb AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM d\n),\ns AS (\n  SELECT instrument_id,\n    arg_max(asset, trad_dt) AS asset,\n    arg_max(description, trad_dt) AS description,\n    arg_max(indicator_description, trad_dt) AS indicator_description,\n    min(trad_dt) AS first_seen,\n    max(trad_dt) AS last_seen\n  FROM d\n  GROUP BY instrument_id\n)\nSELECT CASE WHEN s.first_seen > b.first_day THEN 'added' ELSE 'removed' END AS status,\n  s.asset,\n  s.description,\n  s.indicator_description,\n  strftime(s.first_seen, '%Y-%m-%d') AS first_seen,\n  strftime(s.last_seen, '%Y-%m-%d') AS last_seen\nFROM s, b\nWHERE s.first_seen > b.first_day\n  OR s.last_seen < b.last_day\nORDER BY greatest(s.first_seen, s.last_seen) DESC, s.asset, s.description"
+          "rawSql": "WITH days AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nd AS (\n  SELECT trad_dt, asset, instrument_id, description, indicator_description\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND indicator_type_code IN ($indicator_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nr AS (\n  SELECT d.*, days.prev_dt, days.next_dt,\n    lag(d.trad_dt) OVER w AS inst_prev,\n    lead(d.trad_dt) OVER w AS inst_next\n  FROM d JOIN days ON days.trad_dt = d.trad_dt\n  WINDOW w AS (PARTITION BY d.instrument_id ORDER BY d.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS dt, 'added' AS change, asset, description, indicator_description, 1 AS added, 0 AS removed\n  FROM r\n  WHERE prev_dt IS NOT NULL AND inst_prev IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt, 'removed', asset, description, indicator_description, 0, 1\n  FROM r\n  WHERE next_dt IS NOT NULL AND inst_next IS DISTINCT FROM next_dt\n)\nSELECT strftime(dt, '%Y-%m-%d') AS date, change, asset, description, indicator_description\nFROM ev\nWHERE $__timeFilter(dt::TIMESTAMP)\nORDER BY dt DESC, change, asset, description"
         }
       ]
     },
     {
-      "id": 5,
+      "id": 33,
+      "type": "table",
+      "title": "Code distribution (latest day in range)",
+      "description": "Indicator instruments of the selected assets per combination of type, base, value type, maturity and entry reference codes.",
+      "gridPos": { "x": 12, "y": 71, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND indicator_type_code IN ($indicator_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  indicator_type_code AS type,\n  base_code AS base,\n  value_type_code AS value_type,\n  maturity_code AS maturity,\n  entry_reference_code AS entry_ref,\n  count(*)::BIGINT AS instruments,\n  count(DISTINCT asset)::BIGINT AS assets,\n  string_agg(DISTINCT asset, ', ' ORDER BY asset) AS asset_list\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nGROUP BY ALL\nORDER BY instruments DESC"
+        }
+      ]
+    },
+    {
+      "id": 34,
       "type": "table",
       "title": "Assets with most indicators (latest day in range)",
-      "description": "Top 20 assets by number of indicators on the latest day; ignores the asset filter.",
-      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 12 },
+      "description": "Top 20 assets by indicator instruments on the latest day in the selected types; ignores the asset filter.",
+      "gridPos": { "x": 0, "y": 83, "w": 8, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "options": { "showHeader": true },
@@ -152,7 +537,134 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT asset,\n  any_value(instrument_name) AS instrument_name,\n  count(*)::BIGINT AS indicators\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nGROUP BY asset\nORDER BY indicators DESC, asset\nLIMIT 20"
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE indicator_type_code IN ($indicator_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT asset,\n  any_value(instrument_name) AS instrument_name,\n  count(*)::BIGINT AS instruments\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nGROUP BY asset\nORDER BY instruments DESC, asset\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "type": "table",
+      "title": "Biggest changes (range)",
+      "description": "Top 15 assets by indicator instruments added minus removed in the selected types; ignores the asset filter.",
+      "gridPos": { "x": 8, "y": 83, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH days AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nd AS (\n  SELECT trad_dt, asset, instrument_id, description, indicator_description\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE indicator_type_code IN ($indicator_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nr AS (\n  SELECT d.*, days.prev_dt, days.next_dt,\n    lag(d.trad_dt) OVER w AS inst_prev,\n    lead(d.trad_dt) OVER w AS inst_next\n  FROM d JOIN days ON days.trad_dt = d.trad_dt\n  WINDOW w AS (PARTITION BY d.instrument_id ORDER BY d.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS dt, 'added' AS change, asset, description, indicator_description, 1 AS added, 0 AS removed\n  FROM r\n  WHERE prev_dt IS NOT NULL AND inst_prev IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt, 'removed', asset, description, indicator_description, 0, 1\n  FROM r\n  WHERE next_dt IS NOT NULL AND inst_next IS DISTINCT FROM next_dt\n)\nSELECT asset,\n  sum(added)::BIGINT AS added,\n  sum(removed)::BIGINT AS removed,\n  (sum(added) - sum(removed))::BIGINT AS net_change\nFROM ev\nWHERE $__timeFilter(dt::TIMESTAMP)\nGROUP BY asset\nORDER BY net_change DESC, added DESC, asset\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "type": "table",
+      "title": "Newest indicators (range)",
+      "description": "The 25 most recently added indicator instruments in the selected types; ignores the asset filter.",
+      "gridPos": { "x": 16, "y": 83, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH days AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nd AS (\n  SELECT trad_dt, asset, instrument_id, description, indicator_description\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE indicator_type_code IN ($indicator_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nr AS (\n  SELECT d.*, days.prev_dt, days.next_dt,\n    lag(d.trad_dt) OVER w AS inst_prev,\n    lead(d.trad_dt) OVER w AS inst_next\n  FROM d JOIN days ON days.trad_dt = d.trad_dt\n  WINDOW w AS (PARTITION BY d.instrument_id ORDER BY d.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS dt, 'added' AS change, asset, description, indicator_description, 1 AS added, 0 AS removed\n  FROM r\n  WHERE prev_dt IS NOT NULL AND inst_prev IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt, 'removed', asset, description, indicator_description, 0, 1\n  FROM r\n  WHERE next_dt IS NOT NULL AND inst_next IS DISTINCT FROM next_dt\n)\nSELECT strftime(dt, '%Y-%m-%d') AS added, asset, description, indicator_description\nFROM ev\nWHERE change = 'added'\n  AND $__timeFilter(dt::TIMESTAMP)\nORDER BY dt DESC, asset, description\nLIMIT 25"
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "Indicators per asset",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 95, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 41,
+          "type": "table",
+          "title": "$asset indicators (range)",
+          "description": "Indicator instruments of one selected asset with first and last day seen in the range.",
+          "gridPos": { "x": 0, "y": 96, "w": 12, "h": 10 },
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": { "defaults": {}, "overrides": [] },
+          "options": { "showHeader": true },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "SELECT\n  description,\n  any_value(indicator_description) AS indicator_description,\n  any_value(indicator_type_code) AS type,\n  any_value(base_code) AS base,\n  any_value(decimal_precision) AS decimals,\n  strftime(min(trad_dt), '%Y-%m-%d') AS first_seen,\n  strftime(max(trad_dt), '%Y-%m-%d') AS last_seen,\n  count(DISTINCT trad_dt)::BIGINT AS days\nFROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\nWHERE asset = $asset\n  AND indicator_type_code IN ($indicator_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY description\nORDER BY max(trad_dt) DESC, min(trad_dt) DESC, description"
+            }
+          ],
+          "repeat": "asset",
+          "repeatDirection": "h",
+          "maxPerRow": 2
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "type": "row",
+      "title": "Daily churn per asset",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 96, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 43,
+          "type": "timeseries",
+          "title": "$asset instruments, added and removed",
+          "description": "Daily indicator instruments of one selected asset (line) with instruments added and removed (bars, right axis).",
+          "gridPos": { "x": 0, "y": 97, "w": 12, "h": 9 },
+          "interval": "1d",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "Added" },
+                "properties": [
+                  { "id": "custom.drawStyle", "value": "bars" },
+                  { "id": "custom.fillOpacity", "value": 80 },
+                  { "id": "custom.axisPlacement", "value": "right" },
+                  { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }
+                ]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Removed" },
+                "properties": [
+                  { "id": "custom.drawStyle", "value": "bars" },
+                  { "id": "custom.fillOpacity", "value": 80 },
+                  { "id": "custom.axisPlacement", "value": "right" },
+                  { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+                ]
+              }
+            ]
+          },
+          "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "WITH days AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nd AS (\n  SELECT trad_dt, asset, instrument_id, description, indicator_description\n  FROM read_parquet('s3://uploads/b3_indicator_instruments/daily_parse/*.parquet')\n  WHERE asset = $asset\n    AND indicator_type_code IN ($indicator_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nr AS (\n  SELECT d.*, days.prev_dt, days.next_dt,\n    lag(d.trad_dt) OVER w AS inst_prev,\n    lead(d.trad_dt) OVER w AS inst_next\n  FROM d JOIN days ON days.trad_dt = d.trad_dt\n  WINDOW w AS (PARTITION BY d.instrument_id ORDER BY d.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS dt, 'added' AS change, asset, description, indicator_description, 1 AS added, 0 AS removed\n  FROM r\n  WHERE prev_dt IS NOT NULL AND inst_prev IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt, 'removed', asset, description, indicator_description, 0, 1\n  FROM r\n  WHERE next_dt IS NOT NULL AND inst_next IS DISTINCT FROM next_dt\n)\n,\ncnt AS (\n  SELECT trad_dt AS dt, count(*)::BIGINT AS n\n  FROM d\n  GROUP BY trad_dt\n)\nSELECT\n  days.trad_dt::TIMESTAMP AS time,\n  coalesce(cnt.n, 0)::BIGINT AS \"Instruments\",\n  coalesce(sum(ev.added), 0)::BIGINT AS \"Added\",\n  coalesce(sum(ev.removed), 0)::BIGINT AS \"Removed\"\nFROM days\nLEFT JOIN cnt ON cnt.dt = days.trad_dt\nLEFT JOIN ev ON ev.dt = days.trad_dt\nWHERE $__timeFilter(days.trad_dt::TIMESTAMP)\nGROUP BY days.trad_dt, cnt.n\nORDER BY time"
+            }
+          ],
+          "repeat": "asset",
+          "repeatDirection": "h",
+          "maxPerRow": 2
         }
       ]
     }
