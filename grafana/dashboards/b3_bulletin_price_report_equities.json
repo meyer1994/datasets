@@ -25,45 +25,44 @@
   "templating": {
     "list": [
       {
+        "name": "instrument_type",
+        "label": "Type",
+        "type": "custom",
+        "query": "Shares : share, Units / ETFs / FIIs : unit, BDRs : bdr, Odd lot : odd_lot, Call options : call, Put options : put, Forwards (termo) : forward, Rights & receipts : rights, Other : other",
+        "current": { "text": ["Shares"], "value": ["share"] },
+        "multi": true,
+        "includeAll": false
+      },
+      {
         "name": "ticker",
         "label": "Ticker",
         "type": "query",
         "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\nWHERE regular_trades > 0\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "definition": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\nWHERE regular_trades > 0\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "query": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker\nFROM t\nWHERE instrument_type IN ($instrument_type)\nGROUP BY ticker\nHAVING sum(regular_trades) > 0\nORDER BY sum(regular_trades) DESC\nLIMIT 1000",
+        "definition": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker\nFROM t\nWHERE instrument_type IN ($instrument_type)\nGROUP BY ticker\nHAVING sum(regular_trades) > 0\nORDER BY sum(regular_trades) DESC\nLIMIT 1000",
         "refresh": 2,
+        "sort": 0,
+        "current": {
+          "selected": true,
+          "text": ["PETR4", "B3SA3", "VALE3", "AXIA3", "ITUB4", "BBDC4", "BBAS3", "SBSP3"],
+          "value": ["PETR4", "B3SA3", "VALE3", "AXIA3", "ITUB4", "BBDC4", "BBAS3", "SBSP3"]
+        },
         "multi": true,
         "includeAll": false,
-        "current": { "selected": true, "text": ["PETR4"], "value": ["PETR4"] },
-        "sort": 0
+        "allowCustomValue": true
       }
     ]
   },
   "panels": [
     {
       "id": 1,
-      "type": "candlestick",
-      "title": "$ticker daily candles",
-      "description": "Daily OHLC candles with trade count, one panel per selected ticker.",
-      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 10 },
-      "repeat": "ticker",
-      "repeatDirection": "h",
-      "maxPerRow": 2,
-      "interval": "1d",
+      "type": "stat",
+      "title": "Total trades",
+      "description": "Total regular trades of the selected tickers in the range.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": { "unit": "currencyBRL" },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "volume" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "displayName", "value": "trades" }] }
-        ]
-      },
-      "options": {
-        "mode": "candles+volume",
-        "candleStyle": "candles",
-        "colorStrategy": "open-close",
-        "includeAllFields": false,
-        "legend": { "showLegend": false }
-      },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
@@ -71,27 +70,90 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT\n  trad_dt::TIMESTAMP AS time,\n  first_price::DOUBLE AS open,\n  max_price::DOUBLE AS high,\n  min_price::DOUBLE AS low,\n  last_price::DOUBLE AS close,\n  regular_trades AS volume\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\nWHERE ticker = $ticker\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time"
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT sum(regular_trades)::BIGINT AS trades\nFROM t\nWHERE instrument_type IN ($instrument_type)"
         }
       ]
     },
     {
       "id": 2,
+      "type": "stat",
+      "title": "Instruments traded",
+      "description": "How many of the selected tickers traded in the range.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(DISTINCT ticker) AS instruments\nFROM t\nWHERE instrument_type IN ($instrument_type)\n  AND regular_trades > 0"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Average return in range",
+      "description": "Mean of the selected tickers' returns from first to last close in the range.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\ndaily AS (\n  SELECT trad_dt, ticker, arg_max(last_price, regular_trades)::DOUBLE AS close\n  FROM t\n  WHERE instrument_type IN ($instrument_type)\n    AND last_price > 0\n  GROUP BY ALL\n),\nr AS (\n  SELECT ticker, arg_max(close, trad_dt) / arg_min(close, trad_dt) - 1 AS period_return\n  FROM daily\n  GROUP BY ticker\n)\nSELECT avg(period_return) AS avg_return\nFROM r"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Latest trading day",
+      "description": "Most recent trading day with trades for the selected tickers in the range.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT strftime(max(trad_dt), '%Y-%m-%d') AS latest\nFROM t\nWHERE instrument_type IN ($instrument_type)\n  AND regular_trades > 0"
+        }
+      ]
+    },
+    {
+      "id": 10,
       "type": "timeseries",
-      "title": "Regular trades per day",
-      "description": "Regular trades per day for the selected tickers.",
-      "gridPos": { "x": 0, "y": 10, "w": 24, "h": 8 },
+      "title": "Close price",
+      "description": "Daily last price per selected ticker (BRL, not adjusted).",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "currencyBRL",
           "displayName": "${__field.labels.ticker}",
-          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
         },
         "overrides": []
       },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
       "transformations": [
         { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
       ],
@@ -102,16 +164,525 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, ticker, sum(regular_trades)::BIGINT AS trades\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, ticker"
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, arg_max(last_price, regular_trades)::DOUBLE AS close\nFROM t\nWHERE instrument_type IN ($instrument_type)\n  AND last_price IS NOT NULL\nGROUP BY ALL\nORDER BY time, ticker"
         }
       ]
     },
     {
-      "id": 3,
+      "id": 11,
+      "type": "timeseries",
+      "title": "Return since start of range",
+      "description": "Close relative to each ticker's first close in the range, to compare tickers on one scale.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\ndaily AS (\n  SELECT trad_dt::TIMESTAMP AS time, ticker, arg_max(last_price, regular_trades)::DOUBLE AS close\n  FROM t\n  WHERE instrument_type IN ($instrument_type)\n    AND last_price > 0\n  GROUP BY ALL\n)\nSELECT time, ticker, close / first_value(close) OVER (PARTITION BY ticker ORDER BY time) - 1 AS return\nFROM daily\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Daily change",
+      "description": "Close vs the previous trading day's close, per selected ticker.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\ndaily AS (\n  SELECT trad_dt::TIMESTAMP AS time, ticker, arg_max(last_price, regular_trades)::DOUBLE AS close\n  FROM t\n  WHERE instrument_type IN ($instrument_type)\n    AND last_price > 0\n  GROUP BY ALL\n),\nchanges AS (\n  SELECT time, ticker, close / lag(close) OVER (PARTITION BY ticker ORDER BY time) - 1 AS change\n  FROM daily\n)\nSELECT time, ticker, change\nFROM changes\nWHERE $__timeFilter(time)\n  AND change IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Daily range (high vs low)",
+      "description": "Daily high over low minus 1 per selected ticker, a simple intraday volatility measure.",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, max(max_price)::DOUBLE / min(min_price)::DOUBLE - 1 AS range\nFROM t\nWHERE instrument_type IN ($instrument_type)\n  AND min_price > 0\nGROUP BY ALL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Intraday move (close vs open)",
+      "description": "Last price vs the same day's first price per selected ticker.",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  trad_dt::TIMESTAMP AS time,\n  ticker,\n  arg_max(last_price, regular_trades)::DOUBLE / arg_max(first_price, regular_trades)::DOUBLE - 1 AS move\nFROM t\nWHERE instrument_type IN ($instrument_type)\n  AND first_price > 0\nGROUP BY ALL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Opening gap",
+      "description": "First price vs the previous trading day's close per selected ticker.",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\ndaily AS (\n  SELECT\n    trad_dt::TIMESTAMP AS time,\n    ticker,\n    arg_max(first_price, regular_trades)::DOUBLE AS open,\n    arg_max(last_price, regular_trades)::DOUBLE AS close\n  FROM t\n  WHERE instrument_type IN ($instrument_type)\n    AND first_price > 0\n  GROUP BY ALL\n),\ngaps AS (\n  SELECT time, ticker, open / lag(close) OVER (PARTITION BY ticker ORDER BY time) - 1 AS gap\n  FROM daily\n)\nSELECT time, ticker, gap\nFROM gaps\nWHERE $__timeFilter(time)\n  AND gap IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Close vs average price",
+      "description": "Last price over the day's trade-weighted average price minus 1; positive means the session closed above its average.",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  trad_dt::TIMESTAMP AS time,\n  ticker,\n  arg_max(last_price, regular_trades)::DOUBLE\n    / (sum(avg_price * regular_trades) / sum(regular_trades))::DOUBLE - 1 AS close_vs_avg\nFROM t\nWHERE instrument_type IN ($instrument_type)\n  AND avg_price > 0\nGROUP BY ALL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Daily trades per ticker",
+      "description": "Daily number of regular trades per selected ticker.",
+      "gridPos": { "x": 0, "y": 41, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, sum(regular_trades)::BIGINT AS trades\nFROM t\nWHERE instrument_type IN ($instrument_type)\n  AND regular_trades IS NOT NULL\nGROUP BY ALL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Total trades, stacked by ticker",
+      "description": "Daily regular trades of the selected tickers, stacked so the top edge is the total.",
+      "gridPos": { "x": 12, "y": 41, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, sum(regular_trades)::BIGINT AS trades\nFROM t\nWHERE instrument_type IN ($instrument_type)\n  AND regular_trades IS NOT NULL\nGROUP BY ALL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "Trades by type on the selected underlyings",
+      "description": "Daily trades of every instrument sharing the selected tickers' 4-letter root (shares, odd lot, options, forwards...), stacked by type; ignores the type filter.",
+      "gridPos": { "x": 0, "y": 50, "w": 24, "h": 8 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE left(ticker, 4) IN (SELECT left(x, 4) FROM unnest([$ticker]) AS u(x))\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  trad_dt::TIMESTAMP AS time,\n  sum(regular_trades) FILTER (WHERE instrument_type = 'share')::BIGINT AS \"Shares\",\n  sum(regular_trades) FILTER (WHERE instrument_type = 'unit')::BIGINT AS \"Units / ETFs / FIIs\",\n  sum(regular_trades) FILTER (WHERE instrument_type = 'bdr')::BIGINT AS \"BDRs\",\n  sum(regular_trades) FILTER (WHERE instrument_type = 'odd_lot')::BIGINT AS \"Odd lot\",\n  sum(regular_trades) FILTER (WHERE instrument_type = 'call')::BIGINT AS \"Call options\",\n  sum(regular_trades) FILTER (WHERE instrument_type = 'put')::BIGINT AS \"Put options\",\n  sum(regular_trades) FILTER (WHERE instrument_type = 'forward')::BIGINT AS \"Forwards\",\n  sum(regular_trades) FILTER (WHERE instrument_type IN ('rights', 'other'))::BIGINT AS \"Rights & other\"\nFROM t\nGROUP BY time\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Option trades per underlying",
+      "description": "Daily call plus put trades on the options of each selected ticker's 4-letter root; ignores the type filter.",
+      "gridPos": { "x": 0, "y": 58, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.underlying}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["underlying"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, left(ticker, 4) AS underlying, sum(regular_trades)::BIGINT AS trades\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\nWHERE left(ticker, 4) IN (SELECT left(x, 4) FROM unnest([$ticker]) AS u(x))\n  AND regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]')\n  AND regular_trades IS NOT NULL\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, underlying"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Put/call open interest ratio",
+      "description": "Put open interest over call open interest on the options of each selected ticker's root; ignores the type filter.",
+      "gridPos": { "x": 12, "y": 58, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "displayName": "${__field.labels.underlying}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["underlying"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  trad_dt::TIMESTAMP AS time,\n  left(ticker, 4) AS underlying,\n  sum(open_interest) FILTER (WHERE substr(ticker, 5, 1) > 'L')::DOUBLE\n    / nullif(sum(open_interest) FILTER (WHERE substr(ticker, 5, 1) <= 'L'), 0)::DOUBLE AS put_call\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\nWHERE left(ticker, 4) IN (SELECT left(x, 4) FROM unnest([$ticker]) AS u(x))\n  AND regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]')\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, underlying"
+        }
+      ]
+    },
+    {
+      "id": 5,
       "type": "table",
-      "title": "Most traded (latest day in range)",
-      "description": "Top 20 equities by trade count on the latest day; ignores the ticker filter.",
-      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 12 },
+      "title": "Selected tickers (latest day in range)",
+      "description": "Prices, change vs previous close, trades and open interest for the selected tickers on the latest day.",
+      "gridPos": { "x": 0, "y": 67, "w": 24, "h": 10 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "^(open|high|low|avg_price|close|prev_close)$" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+          { "matcher": { "id": "byName", "options": "change" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] },
+          { "matcher": { "id": "byRegexp", "options": "^(trades|open_interest)$" }, "properties": [{ "id": "unit", "value": "short" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\ndaily AS (\n  SELECT\n    trad_dt,\n    ticker,\n    any_value(instrument_type) AS type,\n    arg_max(first_price, regular_trades)::DOUBLE AS open,\n    max(max_price)::DOUBLE AS high,\n    min(min_price)::DOUBLE AS low,\n    (sum(avg_price * regular_trades) / sum(regular_trades))::DOUBLE AS avg_price,\n    arg_max(last_price, regular_trades)::DOUBLE AS close,\n    sum(regular_trades)::BIGINT AS trades,\n    sum(open_interest)::BIGINT AS open_interest\n  FROM t\n  WHERE instrument_type IN ($instrument_type)\n    AND last_price IS NOT NULL\n  GROUP BY trad_dt, ticker\n),\nw AS (\n  SELECT *, lag(close) OVER (PARTITION BY ticker ORDER BY trad_dt) AS prev_close\n  FROM daily\n)\nSELECT\n  ticker,\n  type,\n  open,\n  high,\n  low,\n  avg_price,\n  close,\n  prev_close,\n  close / nullif(prev_close, 0) - 1 AS change,\n  trades,\n  open_interest\nFROM w\nWHERE trad_dt = (SELECT max(trad_dt) FROM w WHERE $__timeFilter(trad_dt::TIMESTAMP))\nORDER BY trades DESC"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Top 20 by trades (range)",
+      "description": "Top 20 instruments by regular trades in the selected types; ignores the ticker filter.",
+      "gridPos": { "x": 0, "y": 77, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "trades" }, "properties": [{ "id": "unit", "value": "short" }] },
+          { "matcher": { "id": "byRegexp", "options": "^(first_close|last_close)$" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+          { "matcher": { "id": "byName", "options": "period_return" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  ticker,\n  any_value(instrument_type) AS type,\n  sum(regular_trades)::BIGINT AS trades,\n  count(DISTINCT trad_dt) AS days_traded,\n  arg_min(last_price, trad_dt)::DOUBLE AS first_close,\n  arg_max(last_price, trad_dt)::DOUBLE AS last_close,\n  arg_max(last_price, trad_dt)::DOUBLE / nullif(arg_min(last_price, trad_dt)::DOUBLE, 0) - 1 AS period_return\nFROM t\nWHERE instrument_type IN ($instrument_type)\n  AND last_price IS NOT NULL\nGROUP BY ticker\nORDER BY trades DESC\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Top gainers (avg 500+ trades/day)",
+      "description": "Top 15 period returns among instruments averaging 500+ trades per day in the selected types; ignores the ticker filter.",
+      "gridPos": { "x": 12, "y": 77, "w": 6, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "last_close" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+          { "matcher": { "id": "byName", "options": "period_return" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  ticker,\n  arg_max(last_price, trad_dt)::DOUBLE AS last_close,\n  arg_max(last_price, trad_dt)::DOUBLE / arg_min(last_price, trad_dt)::DOUBLE - 1 AS period_return\nFROM t\nWHERE instrument_type IN ($instrument_type)\n  AND last_price > 0\nGROUP BY ticker\nHAVING avg(regular_trades) >= 500\nORDER BY period_return DESC\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Top losers (avg 500+ trades/day)",
+      "description": "Bottom 15 period returns among instruments averaging 500+ trades per day in the selected types; ignores the ticker filter.",
+      "gridPos": { "x": 18, "y": 77, "w": 6, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "last_close" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+          { "matcher": { "id": "byName", "options": "period_return" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  ticker,\n  arg_max(last_price, trad_dt)::DOUBLE AS last_close,\n  arg_max(last_price, trad_dt)::DOUBLE / arg_min(last_price, trad_dt)::DOUBLE - 1 AS period_return\nFROM t\nWHERE instrument_type IN ($instrument_type)\n  AND last_price > 0\nGROUP BY ticker\nHAVING avg(regular_trades) >= 500\nORDER BY period_return ASC\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Biggest moves vs previous close (latest day, 100+ trades)",
+      "description": "Top 20 absolute changes vs the previous close on the latest day, 100+ trades only, in the selected types; ignores the ticker filter.",
+      "gridPos": { "x": 0, "y": 89, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "^(prev_close|close)$" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+          { "matcher": { "id": "byName", "options": "change" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\ndaily AS (\n  SELECT\n    trad_dt,\n    ticker,\n    arg_max(last_price, regular_trades)::DOUBLE AS close,\n    sum(regular_trades)::BIGINT AS trades\n  FROM t\n  WHERE instrument_type IN ($instrument_type)\n    AND last_price > 0\n  GROUP BY trad_dt, ticker\n),\nw AS (\n  SELECT *, lag(close) OVER (PARTITION BY ticker ORDER BY trad_dt) AS prev_close\n  FROM daily\n)\nSELECT ticker, trades, prev_close, close, close / prev_close - 1 AS change\nFROM w\nWHERE trad_dt = (SELECT max(trad_dt) FROM w WHERE $__timeFilter(trad_dt::TIMESTAMP))\n  AND trades >= 100\n  AND prev_close IS NOT NULL\nORDER BY abs(close / prev_close - 1) DESC\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "type": "table",
+      "title": "Largest intraday moves (latest day, 100+ trades)",
+      "description": "Top 20 intraday moves (last vs first price) on the latest day, 100+ trades only, in the selected types; ignores the ticker filter.",
+      "gridPos": { "x": 12, "y": 89, "w": 12, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {},
@@ -128,33 +699,105 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker,\n  regular_trades AS trades,\n  first_price::DOUBLE AS open,\n  max_price::DOUBLE AS high,\n  min_price::DOUBLE AS low,\n  last_price::DOUBLE AS close,\n  (last_price / first_price - 1)::DOUBLE AS intraday_change\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY regular_trades DESC NULLS LAST\nLIMIT 20"
+          "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\ndaily AS (\n  SELECT\n    trad_dt,\n    ticker,\n    sum(regular_trades)::BIGINT AS trades,\n    arg_max(first_price, regular_trades)::DOUBLE AS open,\n    max(max_price)::DOUBLE AS high,\n    min(min_price)::DOUBLE AS low,\n    arg_max(last_price, regular_trades)::DOUBLE AS close\n  FROM t\n  WHERE instrument_type IN ($instrument_type)\n    AND first_price > 0\n  GROUP BY trad_dt, ticker\n)\nSELECT ticker, trades, open, high, low, close, close / open - 1 AS intraday_change\nFROM daily\nWHERE trad_dt = (SELECT max(trad_dt) FROM daily)\n  AND trades >= 100\nORDER BY abs(close / open - 1) DESC\nLIMIT 20"
         }
       ]
     },
     {
-      "id": 4,
-      "type": "table",
-      "title": "Largest intraday moves (latest day in range, 100+ trades)",
-      "description": "Top 20 intraday moves (last vs first price) on the latest day, 100+ trades only; ignores the ticker filter.",
-      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 12 },
-      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          { "matcher": { "id": "byRegexp", "options": "^(open|close)$" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
-          { "matcher": { "id": "byName", "options": "intraday_change" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
-        ]
-      },
-      "options": { "showHeader": true },
-      "targets": [
+      "id": 20,
+      "type": "row",
+      "title": "Candles per ticker",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 101, "w": 24, "h": 1 },
+      "panels": [
         {
-          "refId": "A",
+          "id": 21,
+          "type": "candlestick",
+          "title": "$ticker daily candles",
+          "description": "Daily candles with regular trades as volume, one panel per selected ticker (prices not adjusted).",
+          "gridPos": { "x": 0, "y": 102, "w": 24, "h": 10 },
+          "repeat": "ticker",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "interval": "1d",
           "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-          "editorMode": "code",
-          "rawQuery": true,
-          "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker,\n  regular_trades AS trades,\n  first_price::DOUBLE AS open,\n  last_price::DOUBLE AS close,\n  (last_price / first_price - 1)::DOUBLE AS intraday_change\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND regular_trades >= 100\nORDER BY abs(last_price / first_price - 1) DESC NULLS LAST\nLIMIT 20"
+          "fieldConfig": {
+            "defaults": { "unit": "currencyBRL" },
+            "overrides": [
+              { "matcher": { "id": "byName", "options": "volume" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "displayName", "value": "trades" }] }
+            ]
+          },
+          "options": {
+            "mode": "candles+volume",
+            "candleStyle": "candles",
+            "colorStrategy": "open-close",
+            "includeAllFields": false,
+            "legend": { "showLegend": false }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "WITH t AS (\n  SELECT *,\n    CASE\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]') THEN if(substr(ticker, 5, 1) <= 'L', 'call', 'put')\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}T$') THEN 'forward'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'share'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') THEN 'unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-9]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(1|2|9|10|12|13|14|15)$') THEN 'rights'\n      ELSE 'other'\n    END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\n  WHERE ticker = $ticker\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  trad_dt::TIMESTAMP AS time,\n  arg_max(first_price, regular_trades)::DOUBLE AS open,\n  max(max_price)::DOUBLE AS high,\n  min(min_price)::DOUBLE AS low,\n  arg_max(last_price, regular_trades)::DOUBLE AS close,\n  sum(regular_trades)::BIGINT AS volume\nFROM t\nWHERE instrument_type IN ($instrument_type)\n  AND last_price IS NOT NULL\nGROUP BY time\nORDER BY time"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "Options per underlying",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 102, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 23,
+          "type": "timeseries",
+          "title": "$ticker options: calls vs puts",
+          "description": "Daily call and put trades (stacked, left axis) and open interest (dashed, right axis) on the options of each selected ticker's root.",
+          "gridPos": { "x": 0, "y": 103, "w": 24, "h": 9 },
+          "repeat": "ticker",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "interval": "1d",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+            },
+            "overrides": [
+              { "matcher": { "id": "byRegexp", "options": "^Call" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+              { "matcher": { "id": "byRegexp", "options": "^Put" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] },
+              {
+                "matcher": { "id": "byRegexp", "options": "open interest$" },
+                "properties": [
+                  { "id": "custom.axisPlacement", "value": "right" },
+                  { "id": "custom.stacking", "value": { "mode": "none", "group": "A" } },
+                  { "id": "custom.fillOpacity", "value": 0 },
+                  { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi", "sort": "none" }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "SELECT\n  trad_dt::TIMESTAMP AS time,\n  sum(regular_trades) FILTER (WHERE substr(ticker, 5, 1) <= 'L')::BIGINT AS \"Call trades\",\n  sum(regular_trades) FILTER (WHERE substr(ticker, 5, 1) > 'L')::BIGINT AS \"Put trades\",\n  sum(open_interest) FILTER (WHERE substr(ticker, 5, 1) <= 'L')::BIGINT AS \"Call open interest\",\n  sum(open_interest) FILTER (WHERE substr(ticker, 5, 1) > 'L')::BIGINT AS \"Put open interest\"\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_equities/daily_parse/*.parquet')\nWHERE left(ticker, 4) = left($ticker, 4)\n  AND regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]')\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY time\nORDER BY time"
+            }
+          ]
         }
       ]
     }
