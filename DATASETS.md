@@ -165,37 +165,40 @@ portal](https://dadosabertos.bcb.gov.br/dataset/?sort=views_recent+desc)
 
 ### SGS time series
 
-Single series from the SGS system, fetched as
+Single series from the SGS system, published as
 `https://api.bcb.gov.br/dados/serie/bcdata.sgs.{code}/dados?formato=json` (or
 `formato=csv`). Daily series need `dataInicial`/`dataFinal` and return a
-limited window per request.
+limited window per request. `api.bcb.gov.br` does not resolve from here, so the
+assets use the SGS SOAP facade
+(`https://www3.bcb.gov.br/wssgs/services/FachadaWSSGS`, `getValoresSeriesXML`)
+via `src/ndagster/defs/bacen_sgs.py`.
 
-1. [ ] Taxa de juros – Selic (SGS 11)
+1. [x] Taxa de juros – Selic (SGS 11)
    – [dataset](https://dadosabertos.bcb.gov.br/dataset/11-taxa-de-juros---selic)
    · [data](https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados?formato=json)
-2. [ ] Taxa de juros – Selic acumulada no mês (SGS 4390)
+2. [x] Taxa de juros – Selic acumulada no mês (SGS 4390)
    – [dataset](https://dadosabertos.bcb.gov.br/dataset/4390-taxa-de-juros---selic-acumulada-no-mes)
    · [data](https://api.bcb.gov.br/dados/serie/bcdata.sgs.4390/dados?formato=json)
-3. [ ] Endividamento das famílias com o SFN exceto crédito habitacional em
+3. [x] Endividamento das famílias com o SFN exceto crédito habitacional em
    relação à renda acumulada dos últimos 12 meses – RNDBF (SGS 29038)
    – [dataset](https://dadosabertos.bcb.gov.br/dataset/29038-endividamento-das-familias-com-o-sistema-financeiro-nacional-exceto-credito-habitacional-em-r)
    · [data](https://api.bcb.gov.br/dados/serie/bcdata.sgs.29038/dados?formato=json)
-4. [ ] Cartões de crédito ativos (SGS 25149)
+4. [x] Cartões de crédito ativos (SGS 25149)
    – [dataset](https://dadosabertos.bcb.gov.br/dataset/25149-cartoes-de-credito-ativos)
    · [data](https://api.bcb.gov.br/dados/serie/bcdata.sgs.25149/dados?formato=json)
-5. [ ] Taxa média mensal de juros – recursos livres – Pessoas físicas –
+5. [x] Taxa média mensal de juros – recursos livres – Pessoas físicas –
    Aquisição de veículos (SGS 25471)
    – [dataset](https://dadosabertos.bcb.gov.br/dataset/25471-taxa-media-mensal-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---a)
    · [data](https://api.bcb.gov.br/dados/serie/bcdata.sgs.25471/dados?formato=json)
-6. [ ] Taxa média mensal de juros – recursos livres – Pessoas físicas –
+6. [x] Taxa média mensal de juros – recursos livres – Pessoas físicas –
    Crédito pessoal não consignado (SGS 25464)
    – [dataset](https://dadosabertos.bcb.gov.br/dataset/25464-taxa-media-mensal-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---c)
    · [data](https://api.bcb.gov.br/dados/serie/bcdata.sgs.25464/dados?formato=json)
-7. [ ] Taxa média de juros das operações de crédito – Pessoas físicas – Total
+7. [x] Taxa média de juros das operações de crédito – Pessoas físicas – Total
    (SGS 20716)
    – [dataset](https://dadosabertos.bcb.gov.br/dataset/20716-taxa-media-de-juros-das-operacoes-de-credito---pessoas-fisicas---total)
    · [data](https://api.bcb.gov.br/dados/serie/bcdata.sgs.20716/dados?formato=json)
-8. [ ] Inadimplência da carteira de crédito – Total (SGS 21082)
+8. [x] Inadimplência da carteira de crédito – Total (SGS 21082)
    – [dataset](https://dadosabertos.bcb.gov.br/dataset/21082-inadimplencia-da-carteira-de-credito---total)
    · [data](https://api.bcb.gov.br/dados/serie/bcdata.sgs.21082/dados?formato=json)
 

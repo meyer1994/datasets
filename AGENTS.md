@@ -3,8 +3,9 @@
 Dagster project that downloads and parses B3 (Brasil / Bovespa) market-data
 files — daily bulletins from "pesquisa por pregão"
 (`www.b3.com.br/pesquisapregao`) and the historical COTAHIST series
-(`bvmf.bmfbovespa.com.br`). Raw zips are stored in S3-compatible MinIO; parsed
-results as Parquet; dashboards live in Grafana (DuckDB datasource).
+(`bvmf.bmfbovespa.com.br`) — plus BACEN (Banco Central do Brasil) SGS time
+series. Raw zips are stored in S3-compatible MinIO; parsed results as Parquet;
+dashboards live in Grafana (DuckDB datasource).
 
 ## Commands
 
@@ -66,6 +67,28 @@ Notes:
 - Assets emit rich output metadata (row counts, avg price, markdown previews /
   top-N tables) to the Dagster UI.
 
+## BACEN asset list (`src/ndagster/defs/assets_bacen_*.py`)
+
+Same conventions as the B3 modules, but partitions start in 2020. All use the
+shared helper `bacen_sgs.py`: `download_series(code, start, end)` calls the SGS
+SOAP facade (`www3.bcb.gov.br/wssgs/services/FachadaWSSGS`,
+`getValoresSeriesXML`; `api.bcb.gov.br` does not resolve) and wraps the XML in a
+zip; `parse_series(code, archive)` reads it with `webbed` into `series_code`,
+`ref_dt` (1st of month / Jan 1 for monthly / yearly), `value DECIMAL(24,8)`,
+`blocked`. Empty ranges raise a non-retried `dg.Failure` ("not published yet");
+monthly series lag 1–3 months.
+
+| Module / prefix               | SGS series                                               | Code  | Frequency          |
+| ----------------------------- | -------------------------------------------------------- | ----- | ------------------ |
+| `bacen_selic`                 | Taxa de juros – Selic (% a.d.)                           | 11    | daily              |
+| `bacen_selic_monthly`         | Selic acumulada no mês (% a.m.)                          | 4390  | monthly            |
+| `bacen_household_debt`        | Endividamento das famílias ex. habitacional / renda (%)  | 29038 | monthly            |
+| `bacen_credit_cards`          | Cartões de crédito ativos (millions)                     | 25149 | yearly, 2010–2022  |
+| `bacen_vehicle_loan_rate`     | Juros recursos livres PF – aquisição de veículos (% a.m.) | 25471 | monthly           |
+| `bacen_personal_loan_rate`    | Juros recursos livres PF – pessoal não consignado (% a.m.) | 25464 | monthly          |
+| `bacen_household_credit_rate` | Taxa média de juros PF – total (% a.a.)                  | 20716 | monthly            |
+| `bacen_credit_default`        | Inadimplência da carteira de crédito – total (%)         | 21082 | monthly            |
+
 ## Resources (`src/ndagster/defs/resources.py`)
 
 - `io_manager_parquet` — `PolarsParquetIOManager(base_dir="s3://uploads")`
@@ -85,7 +108,7 @@ Notes:
 ├── .env                         # MinIO + Grafana credentials (gitignored)
 ├── pyproject.toml               # deps + [tool.dg] config (root_module=ndagster)
 ├── grafana/
-│   ├── dashboards/              # 15 JSON dashboards (one per b3_* group)
+│   ├── dashboards/              # 23 JSON dashboards (one per b3_* / bacen_* group)
 │   └── provisioning/
 │       ├── datasources/duckdb.yaml   # DuckDB datasource, minio secret setup
 │       └── dashboards/dashboards.yaml # auto-import dashboards into B3 folder
@@ -93,7 +116,9 @@ Notes:
 │   ├── definitions.py           # @definitions entrypoint → load_from_defs_folder
 │   └── defs/
 │       ├── resources.py         # IO managers (parquet + raw zip)
-│       └── assets_b3_*.py       # 15 asset modules (see table above)
+│       ├── bacen_sgs.py         # SGS SOAP download + parse helper
+│       ├── assets_b3_*.py       # 15 B3 asset modules (see table above)
+│       └── assets_bacen_*.py    # 8 BACEN SGS asset modules
 └── tests/                       # empty (__init__.py only)
 ```
 
