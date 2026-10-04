@@ -20,8 +20,8 @@ uv run ruff format .                       # format
 - Grafana runs the MotherDuck DuckDB datasource plugin; provisioning creates the
   `minio` S3 secret (env `AWS_*` from `.env`) and auto-imports
   `grafana/dashboards/*.json` into the `B3` folder.
-- Reference files: `README.md` (getting started), `TODO.md` (checklist of which
-  B3 file types remain).
+- Reference files: `README.md` (getting started), `DATASETS.md` (checklist of
+  datasets per source, B3 and BACEN).
 
 ## Asset list (`src/ndagster/defs/assets_b3_*.py`)
 
@@ -80,7 +80,7 @@ Notes:
 ├── AGENTS.md
 ├── Dockerfile.grafana            # Grafana + MotherDuck DuckDB datasource plugin (Ubuntu image)
 ├── README.md
-├── TODO.md                      # B3 file-type coverage checklist
+├── DATASETS.md                  # dataset coverage checklist (B3, BACEN)
 ├── docker-compose.yml           # postgres, minio, grafana services
 ├── .env                         # MinIO + Grafana credentials (gitignored)
 ├── pyproject.toml               # deps + [tool.dg] config (root_module=ndagster)
