@@ -31,6 +31,7 @@ directory_type = "project"
 
 [tool.dg.project]
 root_module = "ndagster"
+code_location_name = "ndagster"
 registry_modules = [
     "ndagster.components.*",
 ]
