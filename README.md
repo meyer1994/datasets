@@ -44,6 +44,23 @@ pip install -e ".[dev]"
 
 ### Running Dagster
 
+Start the backing services (Postgres, MinIO, Grafana). Data is kept in the
+`postgres_data`, `minio_data` and `grafana_data` named volumes:
+
+```bash
+docker compose up -d
+```
+
+Dagster stores runs, event logs and schedules in Postgres (see `dagster.yaml`).
+The connection is read from `.env`:
+
+```bash
+DAGSTER_PG_HOST=localhost
+DAGSTER_PG_USERNAME=dagster
+DAGSTER_PG_PASSWORD=dagster
+DAGSTER_PG_DB=dagster
+```
+
 Start the Dagster UI web server:
 
 ```bash

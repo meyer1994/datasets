@@ -18,6 +18,11 @@ uv run ruff check .                        # lint (dev group; ruff>=0.16.10)
 uv run ruff format .                       # format
 ```
 
+- Dagster instance storage (runs, event logs, schedules) is Postgres via
+ `dagster-postgres`, configured in the root `dagster.yaml` from `DAGSTER_PG_*`
+ env vars in `.env`; `dg dev` picks up both from the project dir.
+- Compose data persists in named volumes `postgres_data`, `minio_data`,
+ `grafana_data` (`docker compose down -v` wipes them).
 - Grafana runs the MotherDuck DuckDB datasource plugin; provisioning creates the
   `minio` S3 secret (env `AWS_*` from `.env`) and auto-imports
   `grafana/dashboards/*.json` into the `B3` folder.
@@ -107,7 +112,8 @@ monthly series lag 1–3 months.
 ├── README.md
 ├── DATASETS.md                  # dataset coverage checklist (B3, BACEN)
 ├── docker-compose.yml           # postgres, minio, grafana services
-├── .env                         # MinIO + Grafana credentials (gitignored)
+├── .env                         # MinIO, Grafana + DAGSTER_PG_* credentials (gitignored)
+├── dagster.yaml                 # Dagster instance config (Postgres storage)
 ├── pyproject.toml               # deps + [tool.dg] config (root_module=ndagster)
 ├── grafana/
 │   ├── dashboards/              # 23 JSON dashboards (one per b3_* / bacen_* group)

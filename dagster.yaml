@@ -1,0 +1,12 @@
+storage:
+  postgres:
+    postgres_db:
+      scheme: postgresql+psycopg2
+      hostname:
+        env: DAGSTER_PG_HOST
+      username:
+        env: DAGSTER_PG_USERNAME
+      password:
+        env: DAGSTER_PG_PASSWORD
+      db_name:
+        env: DAGSTER_PG_DB

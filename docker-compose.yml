@@ -1,12 +1,14 @@
-version: '3'
-
 services:
   postgres:
     image: postgres:17-alpine
     environment:
-      - POSTGRES_HOST_AUTH_METHOD=trust
+      POSTGRES_USER: ${DAGSTER_PG_USERNAME:-dagster}
+      POSTGRES_PASSWORD: ${DAGSTER_PG_PASSWORD:-dagster}
+      POSTGRES_DB: ${DAGSTER_PG_DB:-dagster}
     ports:
       - 5432:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   minio:
     image: minio/minio:latest
@@ -20,6 +22,8 @@ services:
       - '/bin/sh'
       - '-c'
       - 'mkdir -p /data/uploads && minio server /data --console-address ":9001"'
+    volumes:
+      - minio_data:/data
 
   grafana:
     build:
@@ -31,8 +35,14 @@ services:
     ports:
       - 3001:3000
     volumes:
+      - grafana_data:/var/lib/grafana
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
       - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
     depends_on:
       - minio
+
+volumes:
+  postgres_data:
+  minio_data:
+  grafana_data:
