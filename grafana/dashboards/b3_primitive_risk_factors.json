@@ -25,55 +25,138 @@
   "templating": {
     "list": [
       {
-        "name": "variation_format",
-        "label": "Variation format",
-        "type": "query",
-        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "SELECT DISTINCT variation_format\nFROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "definition": "SELECT DISTINCT variation_format\nFROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "refresh": 2,
+        "name": "kind",
+        "label": "Type",
+        "type": "custom",
+        "query": "Price / Percentage (e.g. PETR4 BOVA11) : Price / Percentage, Price / Basis points (e.g. VLCSAN3 FCYPETRP Y_GOV_US) : Price / Basis points, Linear / Basis points (e.g. SB_* SPC_* CUPOM) : Linear / Basis points, Exponential / Percentage (e.g. FWD_* BTC SOY) : Exponential / Percentage, Exponential / Basis points (e.g. SNZ STR SPC_ETF_RF) : Exponential / Basis points",
+        "current": { "text": ["Price / Percentage (e.g. PETR4 BOVA11)"], "value": ["Price / Percentage"] },
         "multi": true,
-        "includeAll": true,
-        "allValue": "'__all'",
-        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
-        "sort": 0
+        "includeAll": false
       },
       {
-        "name": "capitalization",
-        "label": "Capitalization",
+        "name": "factor",
+        "label": "Factor",
         "type": "query",
         "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "SELECT DISTINCT capitalization\nFROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "definition": "SELECT DISTINCT capitalization\nFROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "query": "SELECT fpr_name\nFROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\nWHERE concat_ws(' / ', capitalization, variation_format) IN ($kind)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY fpr_name\nORDER BY count(DISTINCT instrument_id) DESC, count(DISTINCT trad_dt) DESC, fpr_name\nLIMIT 5000",
+        "definition": "SELECT fpr_name\nFROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\nWHERE concat_ws(' / ', capitalization, variation_format) IN ($kind)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY fpr_name\nORDER BY count(DISTINCT instrument_id) DESC, count(DISTINCT trad_dt) DESC, fpr_name\nLIMIT 5000",
         "refresh": 2,
+        "sort": 0,
+        "current": {
+          "selected": true,
+          "text": ["PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "B3SA3", "BOVA11", "KNCR11"],
+          "value": ["PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "B3SA3", "BOVA11", "KNCR11"]
+        },
         "multi": true,
-        "includeAll": true,
-        "allValue": "'__all'",
-        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
-        "sort": 0
+        "includeAll": false,
+        "allowCustomValue": true
       }
     ]
   },
   "panels": [
     {
       "id": 1,
+      "type": "stat",
+      "title": "Factors (latest day)",
+      "description": "Number of selected factors present in the latest file in the range.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n  WHERE fpr_name IN ($factor)\n    AND concat_ws(' / ', capitalization, variation_format) IN ($kind)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(DISTINCT fpr_id) AS factors\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Linked instruments (latest day)",
+      "description": "Instruments linked to the selected factors in the latest file in the range.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n  WHERE fpr_name IN ($factor)\n    AND concat_ws(' / ', capitalization, variation_format) IN ($kind)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(DISTINCT instrument_id) AS instruments\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Distinct instruments in range",
+      "description": "Distinct instruments linked to the selected factors at any point in the range.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT count(DISTINCT instrument_id) AS instruments\nFROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\nWHERE fpr_name IN ($factor)\n  AND concat_ws(' / ', capitalization, variation_format) IN ($kind)\n  AND $__timeFilter(trad_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Latest file",
+      "description": "Most recent file date with data for the selected factors in the range.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT strftime(max(trad_dt), '%Y-%m-%d') AS latest\nFROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\nWHERE fpr_name IN ($factor)\n  AND concat_ws(' / ', capitalization, variation_format) IN ($kind)\n  AND $__timeFilter(trad_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 10,
       "type": "timeseries",
-      "title": "Primitive risk factors per day by variation format",
-      "description": "Risk factors per day, stacked by variation format.",
-      "gridPos": { "x": 0, "y": 0, "w": 9, "h": 9 },
+      "title": "Linked instruments per factor",
+      "description": "Daily number of instruments linked to each selected factor.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 9 },
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "displayName": "${__field.labels.variation_format}",
-          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
+          "decimals": 0,
+          "displayName": "${__field.labels.factor}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
         },
         "overrides": []
       },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
       "transformations": [
-        { "id": "partitionByValues", "options": { "fields": ["variation_format"], "keepFields": false, "naming": { "asLabels": true } } }
+        { "id": "partitionByValues", "options": { "fields": ["factor"], "keepFields": false, "naming": { "asLabels": true } } }
       ],
       "targets": [
         {
@@ -82,29 +165,34 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, variation_format, count(DISTINCT fpr_id) AS fprs\nFROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND ('__all' IN ($variation_format) OR variation_format IN ($variation_format))\n  AND ('__all' IN ($capitalization) OR capitalization IN ($capitalization))\nGROUP BY ALL\nORDER BY time, variation_format"
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, fpr_name AS factor, count(DISTINCT instrument_id) AS instruments\nFROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\nWHERE fpr_name IN ($factor)\n  AND concat_ws(' / ', capitalization, variation_format) IN ($kind)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, factor"
         }
       ]
     },
     {
-      "id": 2,
+      "id": 11,
       "type": "timeseries",
-      "title": "FPRs added / removed vs previous file",
-      "description": "Risk factors added and removed vs the previous file.",
-      "gridPos": { "x": 9, "y": 0, "w": 9, "h": 9 },
+      "title": "Net change since start of range",
+      "description": "Linked instruments minus each factor's count on its first day in the range.",
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 9 },
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1 }
+          "decimals": 0,
+          "displayName": "${__field.labels.factor}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
         },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "added" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
-          { "matcher": { "id": "byName", "options": "removed" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
-        ]
+        "overrides": []
       },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["factor"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
       "targets": [
         {
           "refId": "A",
@@ -112,16 +200,284 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT DISTINCT trad_dt, fpr_id\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n  WHERE ('__all' IN ($variation_format) OR variation_format IN ($variation_format))\n    AND ('__all' IN ($capitalization) OR capitalization IN ($capitalization))\n),\ndates AS (\n  SELECT trad_dt, lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt\n  FROM (SELECT DISTINCT trad_dt FROM d)\n),\nadded AS (\n  SELECT c.trad_dt, count(*) AS n\n  FROM (SELECT d.*, dates.prev_dt FROM d JOIN dates USING (trad_dt)) c\n  ANTI JOIN d p ON p.trad_dt = c.prev_dt AND p.fpr_id = c.fpr_id\n  GROUP BY 1\n),\nremoved AS (\n  SELECT r.trad_dt, count(*) AS n\n  FROM (SELECT dates.trad_dt, p.fpr_id FROM dates JOIN d p ON p.trad_dt = dates.prev_dt) r\n  ANTI JOIN d c ON c.trad_dt = r.trad_dt AND c.fpr_id = r.fpr_id\n  GROUP BY 1\n)\nSELECT dates.trad_dt::TIMESTAMP AS time,\n  coalesce(a.n, 0)::BIGINT AS added,\n  -coalesce(r.n, 0)::BIGINT AS removed\nFROM dates\nLEFT JOIN added a USING (trad_dt)\nLEFT JOIN removed r USING (trad_dt)\nWHERE dates.prev_dt IS NOT NULL\n  AND $__timeFilter(dates.trad_dt::TIMESTAMP)\nORDER BY time"
+          "rawSql": "WITH daily AS (\n  SELECT trad_dt::TIMESTAMP AS time, fpr_name AS factor, count(DISTINCT instrument_id) AS instruments\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n  WHERE fpr_name IN ($factor)\n    AND concat_ws(' / ', capitalization, variation_format) IN ($kind)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT time, factor, instruments - first_value(instruments) OVER (PARTITION BY factor ORDER BY time) AS net_change\nFROM daily\nORDER BY time, factor"
         }
       ]
     },
     {
-      "id": 3,
+      "id": 12,
+      "type": "timeseries",
+      "title": "Daily change in linked instruments",
+      "description": "Linked instruments vs the factor's previous file, per selected factor.",
+      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "displayName": "${__field.labels.factor}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["factor"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH daily AS (\n  SELECT trad_dt::TIMESTAMP AS time, fpr_name AS factor, count(DISTINCT instrument_id) AS instruments\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n  WHERE fpr_name IN ($factor)\n    AND concat_ws(' / ', capitalization, variation_format) IN ($kind)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  GROUP BY ALL\n),\nchanges AS (\n  SELECT time, factor, instruments - lag(instruments) OVER (PARTITION BY factor ORDER BY time) AS change\n  FROM daily\n)\nSELECT time, factor, change\nFROM changes\nWHERE $__timeFilter(time)\n  AND change IS NOT NULL\nORDER BY time, factor"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Linked instruments, stacked by factor",
+      "description": "Daily linked instruments of the selected factors, stacked so the top edge is the total.",
+      "gridPos": { "x": 0, "y": 22, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "displayName": "${__field.labels.factor}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["factor"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, fpr_name AS factor, count(DISTINCT instrument_id) AS instruments\nFROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\nWHERE fpr_name IN ($factor)\n  AND concat_ws(' / ', capitalization, variation_format) IN ($kind)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, factor"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Instrument links added / removed",
+      "description": "Factor-instrument links of the selected factors added and removed vs the previous file.",
+      "gridPos": { "x": 12, "y": 22, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "added" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "removed" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH src AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n  WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nd AS (\n  SELECT DISTINCT trad_dt, fpr_id, instrument_id\n  FROM src\n  WHERE fpr_name IN ($factor)\n    AND concat_ws(' / ', capitalization, variation_format) IN ($kind)\n),\ndates AS (\n  SELECT trad_dt, lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt\n  FROM (SELECT DISTINCT trad_dt FROM src)\n),\nadded AS (\n  SELECT c.trad_dt, count(*) AS n\n  FROM (SELECT d.*, dates.prev_dt FROM d JOIN dates USING (trad_dt)) c\n  ANTI JOIN d p ON p.trad_dt = c.prev_dt AND p.fpr_id = c.fpr_id AND p.instrument_id = c.instrument_id\n  GROUP BY 1\n),\nremoved AS (\n  SELECT r.trad_dt, count(*) AS n\n  FROM (SELECT dates.trad_dt, p.fpr_id, p.instrument_id FROM dates JOIN d p ON p.trad_dt = dates.prev_dt) r\n  ANTI JOIN d c ON c.trad_dt = r.trad_dt AND c.fpr_id = r.fpr_id AND c.instrument_id = r.instrument_id\n  GROUP BY 1\n)\nSELECT dates.trad_dt::TIMESTAMP AS time,\n  coalesce(a.n, 0)::BIGINT AS added,\n  -coalesce(r.n, 0)::BIGINT AS removed\nFROM dates\nLEFT JOIN added a USING (trad_dt)\nLEFT JOIN removed r USING (trad_dt)\nWHERE dates.prev_dt IS NOT NULL\n  AND $__timeFilter(dates.trad_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Selected factors (latest day in range)",
+      "description": "Attributes and linked instruments of the selected factors on the latest day.",
+      "gridPos": { "x": 0, "y": 31, "w": 24, "h": 8 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "custom": { "filterable": true } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "first_seen" }, "properties": [{ "id": "unit", "value": "time:YYYY-MM-DD" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n  WHERE fpr_name IN ($factor)\n    AND concat_ws(' / ', capitalization, variation_format) IN ($kind)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\nspan AS (\n  SELECT fpr_id,\n    min(trad_dt)::TIMESTAMP AS first_seen,\n    count(DISTINCT trad_dt) AS days_in_range,\n    count(DISTINCT instrument_id) AS instruments_in_range\n  FROM d\n  GROUP BY fpr_id\n)\nSELECT\n  d.fpr_id,\n  any_value(d.fpr_name) AS factor,\n  any_value(concat_ws(' / ', d.capitalization, d.variation_format)) AS type,\n  any_value(d.day_count_base) AS day_count_base,\n  any_value(d.interpolation_base) AS interpolation_base,\n  any_value(d.fpr_group_id) AS fpr_group_id,\n  count(DISTINCT d.instrument_id) AS instruments,\n  string_agg(DISTINCT d.instrument_id::VARCHAR, ', ' ORDER BY d.instrument_id::VARCHAR) AS instrument_ids,\n  any_value(span.instruments_in_range) AS instruments_in_range,\n  any_value(span.days_in_range) AS days_in_range,\n  any_value(span.first_seen) AS first_seen\nFROM d\nJOIN span USING (fpr_id)\nWHERE d.trad_dt = (SELECT max(trad_dt) FROM d)\nGROUP BY d.fpr_id\nORDER BY factor"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Factors per day by type",
+      "description": "Daily number of factors in each type, stacked so the top edge is the file total; ignores both filters.",
+      "gridPos": { "x": 0, "y": 39, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "displayName": "${__field.labels.kind}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["kind"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, concat_ws(' / ', capitalization, variation_format) AS kind, count(DISTINCT fpr_id) AS factors\nFROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, kind"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Factors added / removed",
+      "description": "Factors of the selected types added and removed vs the previous file; ignores the factor filter.",
+      "gridPos": { "x": 12, "y": 39, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "added" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "removed" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH src AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n  WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nd AS (\n  SELECT DISTINCT trad_dt, fpr_id\n  FROM src\n  WHERE concat_ws(' / ', capitalization, variation_format) IN ($kind)\n),\ndates AS (\n  SELECT trad_dt, lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt\n  FROM (SELECT DISTINCT trad_dt FROM src)\n),\nadded AS (\n  SELECT c.trad_dt, count(*) AS n\n  FROM (SELECT d.*, dates.prev_dt FROM d JOIN dates USING (trad_dt)) c\n  ANTI JOIN d p ON p.trad_dt = c.prev_dt AND p.fpr_id = c.fpr_id\n  GROUP BY 1\n),\nremoved AS (\n  SELECT r.trad_dt, count(*) AS n\n  FROM (SELECT dates.trad_dt, p.fpr_id FROM dates JOIN d p ON p.trad_dt = dates.prev_dt) r\n  ANTI JOIN d c ON c.trad_dt = r.trad_dt AND c.fpr_id = r.fpr_id\n  GROUP BY 1\n)\nSELECT dates.trad_dt::TIMESTAMP AS time,\n  coalesce(a.n, 0)::BIGINT AS added,\n  -coalesce(r.n, 0)::BIGINT AS removed\nFROM dates\nLEFT JOIN added a USING (trad_dt)\nLEFT JOIN removed r USING (trad_dt)\nWHERE dates.prev_dt IS NOT NULL\n  AND $__timeFilter(dates.trad_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Most linked instruments (range)",
+      "description": "Top 20 factors of the selected types by distinct linked instruments in the range; ignores the factor filter.",
+      "gridPos": { "x": 0, "y": 48, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  fpr_name AS factor,\n  count(DISTINCT instrument_id) AS instruments_in_range,\n  arg_max(instrument_id, trad_dt)::VARCHAR AS latest_instrument,\n  count(DISTINCT trad_dt) AS days_in_range\nFROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\nWHERE concat_ws(' / ', capitalization, variation_format) IN ($kind)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY fpr_name\nORDER BY instruments_in_range DESC, days_in_range DESC, factor\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "New factors (first seen in range)",
+      "description": "Factors of the selected types whose first file falls in the range; ignores the factor filter.",
+      "gridPos": { "x": 8, "y": 48, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "first_seen|last_seen" }, "properties": [{ "id": "unit", "value": "time:YYYY-MM-DD" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH src AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n),\nf AS (\n  SELECT\n    fpr_name AS factor,\n    any_value(concat_ws(' / ', capitalization, variation_format)) AS type,\n    min(trad_dt) AS first_seen,\n    max(trad_dt) AS last_seen\n  FROM src\n  WHERE concat_ws(' / ', capitalization, variation_format) IN ($kind)\n  GROUP BY fpr_name\n)\nSELECT factor, type, first_seen::TIMESTAMP AS first_seen, last_seen::TIMESTAMP AS last_seen\nFROM f\nWHERE $__timeFilter(first_seen::TIMESTAMP)\n  AND first_seen > (SELECT min(trad_dt) FROM src)\nORDER BY first_seen DESC, factor\nLIMIT 100"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Dropped factors (last seen in range)",
+      "description": "Factors of the selected types whose last file falls in the range; ignores the factor filter.",
+      "gridPos": { "x": 16, "y": 48, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "first_seen|last_seen" }, "properties": [{ "id": "unit", "value": "time:YYYY-MM-DD" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH src AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n),\nf AS (\n  SELECT\n    fpr_name AS factor,\n    any_value(concat_ws(' / ', capitalization, variation_format)) AS type,\n    min(trad_dt) AS first_seen,\n    max(trad_dt) AS last_seen\n  FROM src\n  WHERE concat_ws(' / ', capitalization, variation_format) IN ($kind)\n  GROUP BY fpr_name\n)\nSELECT factor, type, first_seen::TIMESTAMP AS first_seen, last_seen::TIMESTAMP AS last_seen\nFROM f\nWHERE $__timeFilter(last_seen::TIMESTAMP)\n  AND last_seen < (SELECT max(trad_dt) FROM src)\nORDER BY last_seen DESC, factor\nLIMIT 100"
+        }
+      ]
+    },
+    {
+      "id": 9,
       "type": "bargauge",
-      "title": "FPRs by format, capitalization and base (latest day in range)",
-      "description": "Risk factors by format, capitalization and base on the latest day.",
-      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 9 },
+      "title": "Factors by type and base (latest day)",
+      "description": "Factors of the selected types by capitalization, format and day-count / interpolation base on the latest day; ignores the factor filter.",
+      "gridPos": { "x": 0, "y": 60, "w": 8, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": { "unit": "short", "min": 0, "color": { "mode": "palette-classic" } },
@@ -131,7 +487,7 @@
         "orientation": "horizontal",
         "displayMode": "basic",
         "showUnfilled": true,
-        "reduceOptions": { "values": true, "calcs": [], "fields": "/^fprs$/" }
+        "reduceOptions": { "values": true, "calcs": [], "fields": "/^factors$/" }
       },
       "targets": [
         {
@@ -140,16 +496,16 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($variation_format) OR variation_format IN ($variation_format))\n    AND ('__all' IN ($capitalization) OR capitalization IN ($capitalization))\n)\nSELECT concat_ws(' / ', variation_format, capitalization, day_count_base::VARCHAR || '/' || interpolation_base::VARCHAR) AS category,\n  count(DISTINCT fpr_id) AS fprs\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nGROUP BY ALL\nORDER BY fprs DESC"
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n  WHERE concat_ws(' / ', capitalization, variation_format) IN ($kind)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  concat_ws(' / ', capitalization, variation_format, coalesce(day_count_base::VARCHAR || '/' || interpolation_base::VARCHAR, 'no base')) AS category,\n  count(DISTINCT fpr_id) AS factors\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nGROUP BY ALL\nORDER BY factors DESC"
         }
       ]
     },
     {
-      "id": 4,
+      "id": 17,
       "type": "table",
-      "title": "FPRs added / removed in range",
-      "description": "Risk factors added or removed within the range.",
-      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 10 },
+      "title": "Factor changes in range",
+      "description": "Factors of the selected types added or removed vs the previous file; ignores the factor filter.",
+      "gridPos": { "x": 8, "y": 60, "w": 16, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": { "custom": { "filterable": true } },
@@ -165,16 +521,16 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT trad_dt, fpr_id,\n    any_value(fpr_name) AS fpr_name,\n    any_value(variation_format) AS variation_format,\n    any_value(capitalization) AS capitalization,\n    any_value(day_count_base) AS day_count_base,\n    any_value(interpolation_base) AS interpolation_base,\n    string_agg(instrument_id::VARCHAR, ', ' ORDER BY instrument_id) AS instrument_ids\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n  WHERE ('__all' IN ($variation_format) OR variation_format IN ($variation_format))\n    AND ('__all' IN ($capitalization) OR capitalization IN ($capitalization))\n  GROUP BY trad_dt, fpr_id\n),\ndates AS (\n  SELECT trad_dt, lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt\n  FROM (SELECT DISTINCT trad_dt FROM d)\n),\nchanges AS (\n  SELECT c.trad_dt, 'added' AS change, c.* EXCLUDE (trad_dt, prev_dt)\n  FROM (SELECT d.*, dates.prev_dt FROM d JOIN dates USING (trad_dt)) c\n  ANTI JOIN d p ON p.trad_dt = c.prev_dt AND p.fpr_id = c.fpr_id\n  WHERE c.prev_dt IS NOT NULL\n  UNION ALL BY NAME\n  SELECT r.cur_dt AS trad_dt, 'removed' AS change, r.* EXCLUDE (trad_dt, cur_dt)\n  FROM (SELECT p.*, dates.trad_dt AS cur_dt FROM dates JOIN d p ON p.trad_dt = dates.prev_dt) r\n  ANTI JOIN d c ON c.trad_dt = r.cur_dt AND c.fpr_id = r.fpr_id\n)\nSELECT trad_dt::TIMESTAMP AS trad_dt, change, fpr_id, fpr_name, variation_format, capitalization, day_count_base, interpolation_base, instrument_ids\nFROM changes\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY trad_dt DESC, change, fpr_name\nLIMIT 1000"
+          "rawSql": "WITH src AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n  WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nd AS (\n  SELECT trad_dt, fpr_id,\n    any_value(fpr_name) AS factor,\n    any_value(concat_ws(' / ', capitalization, variation_format)) AS type,\n    any_value(day_count_base) AS day_count_base,\n    any_value(interpolation_base) AS interpolation_base,\n    string_agg(DISTINCT instrument_id::VARCHAR, ', ' ORDER BY instrument_id::VARCHAR) AS instrument_ids\n  FROM src\n  WHERE concat_ws(' / ', capitalization, variation_format) IN ($kind)\n  GROUP BY trad_dt, fpr_id\n),\ndates AS (\n  SELECT trad_dt, lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt\n  FROM (SELECT DISTINCT trad_dt FROM src)\n),\nchanges AS (\n  SELECT c.trad_dt, 'added' AS change, c.* EXCLUDE (trad_dt, prev_dt)\n  FROM (SELECT d.*, dates.prev_dt FROM d JOIN dates USING (trad_dt)) c\n  ANTI JOIN d p ON p.trad_dt = c.prev_dt AND p.fpr_id = c.fpr_id\n  WHERE c.prev_dt IS NOT NULL\n  UNION ALL BY NAME\n  SELECT r.cur_dt AS trad_dt, 'removed' AS change, r.* EXCLUDE (trad_dt, cur_dt)\n  FROM (SELECT p.*, dates.trad_dt AS cur_dt FROM dates JOIN d p ON p.trad_dt = dates.prev_dt) r\n  ANTI JOIN d c ON c.trad_dt = r.cur_dt AND c.fpr_id = r.fpr_id\n)\nSELECT trad_dt::TIMESTAMP AS trad_dt, change, fpr_id, factor, type, day_count_base, interpolation_base, instrument_ids\nFROM changes\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY trad_dt DESC, change, factor\nLIMIT 1000"
         }
       ]
     },
     {
-      "id": 5,
+      "id": 18,
       "type": "table",
-      "title": "Primitive risk factors (latest day in range)",
-      "description": "All risk factors on the latest day.",
-      "gridPos": { "x": 0, "y": 19, "w": 24, "h": 14 },
+      "title": "All factors in selected types (latest day in range)",
+      "description": "Every factor of the selected types on the latest day, to browse names for the factor filter; ignores the factor filter.",
+      "gridPos": { "x": 0, "y": 72, "w": 24, "h": 14 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": { "custom": { "filterable": true } },
@@ -188,7 +544,44 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($variation_format) OR variation_format IN ($variation_format))\n    AND ('__all' IN ($capitalization) OR capitalization IN ($capitalization))\n)\nSELECT fpr_id,\n  any_value(fpr_name) AS fpr_name,\n  any_value(variation_format) AS variation_format,\n  any_value(capitalization) AS capitalization,\n  any_value(day_count_base) AS day_count_base,\n  any_value(interpolation_base) AS interpolation_base,\n  any_value(fpr_group_id) AS fpr_group_id,\n  count(*) AS instruments,\n  string_agg(instrument_id::VARCHAR, ', ' ORDER BY instrument_id) AS instrument_ids\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nGROUP BY fpr_id\nORDER BY day_count_base NULLS LAST, fpr_name\nLIMIT 5000"
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\n  WHERE concat_ws(' / ', capitalization, variation_format) IN ($kind)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT fpr_id,\n  any_value(fpr_name) AS factor,\n  any_value(concat_ws(' / ', capitalization, variation_format)) AS type,\n  any_value(day_count_base) AS day_count_base,\n  any_value(interpolation_base) AS interpolation_base,\n  any_value(fpr_group_id) AS fpr_group_id,\n  count(DISTINCT instrument_id) AS instruments,\n  string_agg(DISTINCT instrument_id::VARCHAR, ', ' ORDER BY instrument_id::VARCHAR) AS instrument_ids\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nGROUP BY fpr_id\nORDER BY type, factor\nLIMIT 5000"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Instruments per factor",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 86, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 31,
+          "type": "table",
+          "title": "$factor linked instruments",
+          "description": "Every instrument linked to the factor in the range with its first and last file, one panel per selected factor.",
+          "gridPos": { "x": 0, "y": 87, "w": 24, "h": 7 },
+          "repeat": "factor",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+              { "matcher": { "id": "byRegexp", "options": "first_seen|last_seen" }, "properties": [{ "id": "unit", "value": "time:YYYY-MM-DD" }] }
+            ]
+          },
+          "options": { "showHeader": true },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "SELECT\n  instrument_id::VARCHAR AS instrument_id,\n  min(trad_dt)::TIMESTAMP AS first_seen,\n  max(trad_dt)::TIMESTAMP AS last_seen,\n  count(DISTINCT trad_dt) AS days,\n  max(trad_dt) = max(max(trad_dt)) OVER () AS current\nFROM read_parquet('s3://uploads/b3_primitive_risk_factors/daily_parse/*.parquet')\nWHERE fpr_name = $factor\n  AND concat_ws(' / ', capitalization, variation_format) IN ($kind)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY instrument_id\nORDER BY first_seen DESC, instrument_id"
+            }
+          ]
         }
       ]
     }
