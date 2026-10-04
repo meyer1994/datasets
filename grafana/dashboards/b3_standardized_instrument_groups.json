@@ -25,17 +25,27 @@
   "templating": {
     "list": [
       {
+        "name": "size_class",
+        "label": "Size class",
+        "type": "custom",
+        "query": "Single (1) : single, Small (2-20) : small, Medium (21-100) : medium, Large (101-1000) : large, Huge (>1000) : huge",
+        "current": { "text": ["Large (101-1000)", "Huge (>1000)"], "value": ["large", "huge"] },
+        "multi": true,
+        "includeAll": false
+      },
+      {
         "name": "group",
         "label": "Group",
         "type": "query",
         "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "SELECT group_id::VARCHAR AS group_id\nFROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY 1\nORDER BY count(*) DESC, 1",
-        "definition": "SELECT group_id::VARCHAR AS group_id\nFROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY 1\nORDER BY count(*) DESC, 1",
+        "query": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT group_id::VARCHAR AS group_id\nFROM d\nGROUP BY group_id\nHAVING CASE\n    WHEN max(instruments) = 1 THEN 'single'\n    WHEN max(instruments) <= 20 THEN 'small'\n    WHEN max(instruments) <= 100 THEN 'medium'\n    WHEN max(instruments) <= 1000 THEN 'large'\n    ELSE 'huge'\n  END IN ($size_class)\nORDER BY avg(instruments) DESC, group_id\nLIMIT 1000",
+        "definition": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT group_id::VARCHAR AS group_id\nFROM d\nGROUP BY group_id\nHAVING CASE\n    WHEN max(instruments) = 1 THEN 'single'\n    WHEN max(instruments) <= 20 THEN 'small'\n    WHEN max(instruments) <= 100 THEN 'medium'\n    WHEN max(instruments) <= 1000 THEN 'large'\n    ELSE 'huge'\n  END IN ($size_class)\nORDER BY avg(instruments) DESC, group_id\nLIMIT 1000",
         "refresh": 2,
+        "sort": 0,
+        "current": { "selected": true, "text": ["7380", "10025", "5667", "5698", "5973", "5860", "5948", "10032"], "value": ["7380", "10025", "5667", "5698", "5973", "5860", "5948", "10032"] },
         "multi": true,
         "includeAll": false,
-        "current": { "selected": true, "text": ["7380"], "value": ["7380"] },
-        "sort": 0
+        "allowCustomValue": true
       }
     ]
   },
@@ -43,22 +53,12 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "Selected groups (latest day in range)",
-      "description": "Instruments and groups in the selection on the latest day.",
-      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 9 },
+      "title": "Instruments (latest day)",
+      "description": "Instruments in the selected groups on the latest day in the range.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "orientation": "vertical",
-        "textMode": "value_and_name",
-        "colorMode": "none",
-        "graphMode": "none",
-        "justifyMode": "center"
-      },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
@@ -66,30 +66,27 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(*)::BIGINT AS instruments,\n  count(DISTINCT group_id)::BIGINT AS group_count\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM d\n  GROUP BY group_id\n)\nSELECT sum(instruments)::BIGINT AS instruments\nFROM d\nJOIN s USING (group_id)\nWHERE s.size_class IN ($size_class)\n  AND d.trad_dt = (SELECT max(trad_dt) FROM d)"
         }
       ]
     },
     {
       "id": 2,
-      "type": "timeseries",
-      "title": "Instruments per group per day",
-      "description": "Instruments per selected group per day.",
-      "gridPos": { "x": 6, "y": 0, "w": 18, "h": 9 },
-      "interval": "1d",
+      "type": "stat",
+      "title": "Net change vs start of range",
+      "description": "Instruments in the selected groups on the latest day minus the first day in the range.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "displayName": "${__field.labels.group_id}",
-          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 0, "showPoints": "always", "pointSize": 4 }
+          "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "text", "value": 0 }, { "color": "green", "value": 1 }] }
         },
         "overrides": []
       },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "transformations": [
-        { "id": "partitionByValues", "options": { "fields": ["group_id"], "keepFields": false, "naming": { "asLabels": true } } }
-      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
@@ -97,24 +94,19 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, group_id::VARCHAR AS group_id, count(*)::BIGINT AS instruments\nFROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\nWHERE group_id::VARCHAR IN ($group)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, group_id"
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM d\n  GROUP BY group_id\n)\n, b AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM d\n)\nSELECT (coalesce(sum(instruments) FILTER (WHERE trad_dt = last_day), 0)\n  - coalesce(sum(instruments) FILTER (WHERE trad_dt = first_day), 0))::BIGINT AS change\nFROM d\nJOIN s USING (group_id)\nCROSS JOIN b\nWHERE s.size_class IN ($size_class)"
         }
       ]
     },
     {
       "id": 3,
-      "type": "table",
-      "title": "Largest groups (latest day in range)",
-      "description": "Top 20 groups by size on the latest day; ignores the group filter.",
-      "gridPos": { "x": 0, "y": 9, "w": 12, "h": 12 },
+      "type": "stat",
+      "title": "Additions (range)",
+      "description": "Instruments that joined a selected group vs the previous trading day, summed over the range.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "change" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-text" } }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "text", "value": 0 }, { "color": "green", "value": 1 }] } }] }
-        ]
-      },
-      "options": { "showHeader": true },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
@@ -122,21 +114,298 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\nb AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM d\n),\ns AS (\n  SELECT group_id,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = last_day), 0) AS instruments,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = first_day), 0) AS instruments_at_start\n  FROM d CROSS JOIN b\n  GROUP BY group_id\n)\nSELECT group_id::VARCHAR AS group_id,\n  instruments::BIGINT AS instruments,\n  instruments_at_start::BIGINT AS instruments_at_start,\n  (instruments - instruments_at_start)::BIGINT AS change\nFROM s\nORDER BY instruments DESC, group_id\nLIMIT 20"
+          "rawSql": "WITH m AS (\n  SELECT trad_dt, group_id, instrument_id\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nsz AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM m\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM sz\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY group_id\n),\ndays AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n      AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nx AS (\n  SELECT m.trad_dt, m.group_id, days.prev_dt, days.next_dt,\n    lag(m.trad_dt) OVER w AS prev_seen,\n    lead(m.trad_dt) OVER w AS next_seen\n  FROM m\n  JOIN days ON days.trad_dt = m.trad_dt\n  JOIN s ON s.group_id = m.group_id\n  WHERE s.size_class IN ($size_class)\n  WINDOW w AS (PARTITION BY m.group_id, m.instrument_id ORDER BY m.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS day, group_id, 1 AS added, 0 AS removed\n  FROM x\n  WHERE prev_dt IS NOT NULL AND prev_seen IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt AS day, group_id, 0 AS added, 1 AS removed\n  FROM x\n  WHERE next_dt IS NOT NULL AND next_seen IS DISTINCT FROM next_dt\n),\ngrid AS (\n  SELECT days.trad_dt AS day, g.group_id\n  FROM days\n  CROSS JOIN (SELECT DISTINCT group_id FROM x) g\n  WHERE days.prev_dt IS NOT NULL\n    AND $__timeFilter(days.trad_dt::TIMESTAMP)\n),\ndaily AS (\n  SELECT grid.day, grid.group_id,\n    coalesce(sum(ev.added), 0) AS added,\n    coalesce(sum(ev.removed), 0) AS removed,\n    coalesce(any_value(sz.instruments), 0) AS instruments\n  FROM grid\n  LEFT JOIN ev ON ev.day = grid.day AND ev.group_id = grid.group_id\n  LEFT JOIN sz ON sz.trad_dt = grid.day AND sz.group_id = grid.group_id\n  GROUP BY ALL\n)\nSELECT sum(added)::BIGINT AS additions\nFROM daily"
         }
       ]
     },
     {
       "id": 4,
+      "type": "stat",
+      "title": "Removals (range)",
+      "description": "Instruments that left a selected group vs the previous trading day, summed over the range.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH m AS (\n  SELECT trad_dt, group_id, instrument_id\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nsz AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM m\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM sz\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY group_id\n),\ndays AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n      AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nx AS (\n  SELECT m.trad_dt, m.group_id, days.prev_dt, days.next_dt,\n    lag(m.trad_dt) OVER w AS prev_seen,\n    lead(m.trad_dt) OVER w AS next_seen\n  FROM m\n  JOIN days ON days.trad_dt = m.trad_dt\n  JOIN s ON s.group_id = m.group_id\n  WHERE s.size_class IN ($size_class)\n  WINDOW w AS (PARTITION BY m.group_id, m.instrument_id ORDER BY m.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS day, group_id, 1 AS added, 0 AS removed\n  FROM x\n  WHERE prev_dt IS NOT NULL AND prev_seen IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt AS day, group_id, 0 AS added, 1 AS removed\n  FROM x\n  WHERE next_dt IS NOT NULL AND next_seen IS DISTINCT FROM next_dt\n),\ngrid AS (\n  SELECT days.trad_dt AS day, g.group_id\n  FROM days\n  CROSS JOIN (SELECT DISTINCT group_id FROM x) g\n  WHERE days.prev_dt IS NOT NULL\n    AND $__timeFilter(days.trad_dt::TIMESTAMP)\n),\ndaily AS (\n  SELECT grid.day, grid.group_id,\n    coalesce(sum(ev.added), 0) AS added,\n    coalesce(sum(ev.removed), 0) AS removed,\n    coalesce(any_value(sz.instruments), 0) AS instruments\n  FROM grid\n  LEFT JOIN ev ON ev.day = grid.day AND ev.group_id = grid.group_id\n  LEFT JOIN sz ON sz.trad_dt = grid.day AND sz.group_id = grid.group_id\n  GROUP BY ALL\n)\nSELECT sum(removed)::BIGINT AS removals\nFROM daily"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Instruments per group",
+      "description": "Daily number of instruments per selected group.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0, "displayName": "${__field.labels.group_id}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["group_id"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM d\n  GROUP BY group_id\n)\nSELECT d.trad_dt::TIMESTAMP AS time, group_id::VARCHAR AS group_id, instruments::BIGINT AS instruments\nFROM d\nJOIN s USING (group_id)\nWHERE s.size_class IN ($size_class)\nORDER BY time, group_id"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Size change since start of range",
+      "description": "Group size relative to each group's first day in the range.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "displayName": "${__field.labels.group_id}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["group_id"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM d\n  GROUP BY group_id\n)\nSELECT d.trad_dt::TIMESTAMP AS time, group_id::VARCHAR AS group_id,\n  instruments / nullif(first_value(instruments) OVER (PARTITION BY group_id ORDER BY d.trad_dt), 0) - 1 AS change\nFROM d\nJOIN s USING (group_id)\nWHERE s.size_class IN ($size_class)\nORDER BY time, group_id"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Daily net change",
+      "description": "Instruments added minus removed vs the previous trading day, per selected group.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0, "displayName": "${__field.labels.group_id}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["group_id"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH m AS (\n  SELECT trad_dt, group_id, instrument_id\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nsz AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM m\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM sz\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY group_id\n),\ndays AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n      AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nx AS (\n  SELECT m.trad_dt, m.group_id, days.prev_dt, days.next_dt,\n    lag(m.trad_dt) OVER w AS prev_seen,\n    lead(m.trad_dt) OVER w AS next_seen\n  FROM m\n  JOIN days ON days.trad_dt = m.trad_dt\n  JOIN s ON s.group_id = m.group_id\n  WHERE s.size_class IN ($size_class)\n  WINDOW w AS (PARTITION BY m.group_id, m.instrument_id ORDER BY m.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS day, group_id, 1 AS added, 0 AS removed\n  FROM x\n  WHERE prev_dt IS NOT NULL AND prev_seen IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt AS day, group_id, 0 AS added, 1 AS removed\n  FROM x\n  WHERE next_dt IS NOT NULL AND next_seen IS DISTINCT FROM next_dt\n),\ngrid AS (\n  SELECT days.trad_dt AS day, g.group_id\n  FROM days\n  CROSS JOIN (SELECT DISTINCT group_id FROM x) g\n  WHERE days.prev_dt IS NOT NULL\n    AND $__timeFilter(days.trad_dt::TIMESTAMP)\n),\ndaily AS (\n  SELECT grid.day, grid.group_id,\n    coalesce(sum(ev.added), 0) AS added,\n    coalesce(sum(ev.removed), 0) AS removed,\n    coalesce(any_value(sz.instruments), 0) AS instruments\n  FROM grid\n  LEFT JOIN ev ON ev.day = grid.day AND ev.group_id = grid.group_id\n  LEFT JOIN sz ON sz.trad_dt = grid.day AND sz.group_id = grid.group_id\n  GROUP BY ALL\n)\nSELECT day::TIMESTAMP AS time, group_id::VARCHAR AS group_id, (added - removed)::BIGINT AS net_change\nFROM daily\nORDER BY time, group_id"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Additions per day",
+      "description": "Instruments that joined each selected group vs the previous trading day.",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0, "displayName": "${__field.labels.group_id}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["group_id"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH m AS (\n  SELECT trad_dt, group_id, instrument_id\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nsz AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM m\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM sz\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY group_id\n),\ndays AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n      AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nx AS (\n  SELECT m.trad_dt, m.group_id, days.prev_dt, days.next_dt,\n    lag(m.trad_dt) OVER w AS prev_seen,\n    lead(m.trad_dt) OVER w AS next_seen\n  FROM m\n  JOIN days ON days.trad_dt = m.trad_dt\n  JOIN s ON s.group_id = m.group_id\n  WHERE s.size_class IN ($size_class)\n  WINDOW w AS (PARTITION BY m.group_id, m.instrument_id ORDER BY m.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS day, group_id, 1 AS added, 0 AS removed\n  FROM x\n  WHERE prev_dt IS NOT NULL AND prev_seen IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt AS day, group_id, 0 AS added, 1 AS removed\n  FROM x\n  WHERE next_dt IS NOT NULL AND next_seen IS DISTINCT FROM next_dt\n),\ngrid AS (\n  SELECT days.trad_dt AS day, g.group_id\n  FROM days\n  CROSS JOIN (SELECT DISTINCT group_id FROM x) g\n  WHERE days.prev_dt IS NOT NULL\n    AND $__timeFilter(days.trad_dt::TIMESTAMP)\n),\ndaily AS (\n  SELECT grid.day, grid.group_id,\n    coalesce(sum(ev.added), 0) AS added,\n    coalesce(sum(ev.removed), 0) AS removed,\n    coalesce(any_value(sz.instruments), 0) AS instruments\n  FROM grid\n  LEFT JOIN ev ON ev.day = grid.day AND ev.group_id = grid.group_id\n  LEFT JOIN sz ON sz.trad_dt = grid.day AND sz.group_id = grid.group_id\n  GROUP BY ALL\n)\nSELECT day::TIMESTAMP AS time, group_id::VARCHAR AS group_id, added::BIGINT AS added\nFROM daily\nORDER BY time, group_id"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Removals per day",
+      "description": "Instruments that left each selected group vs the previous trading day (expiries show up here).",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0, "displayName": "${__field.labels.group_id}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["group_id"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH m AS (\n  SELECT trad_dt, group_id, instrument_id\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nsz AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM m\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM sz\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY group_id\n),\ndays AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n      AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nx AS (\n  SELECT m.trad_dt, m.group_id, days.prev_dt, days.next_dt,\n    lag(m.trad_dt) OVER w AS prev_seen,\n    lead(m.trad_dt) OVER w AS next_seen\n  FROM m\n  JOIN days ON days.trad_dt = m.trad_dt\n  JOIN s ON s.group_id = m.group_id\n  WHERE s.size_class IN ($size_class)\n  WINDOW w AS (PARTITION BY m.group_id, m.instrument_id ORDER BY m.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS day, group_id, 1 AS added, 0 AS removed\n  FROM x\n  WHERE prev_dt IS NOT NULL AND prev_seen IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt AS day, group_id, 0 AS added, 1 AS removed\n  FROM x\n  WHERE next_dt IS NOT NULL AND next_seen IS DISTINCT FROM next_dt\n),\ngrid AS (\n  SELECT days.trad_dt AS day, g.group_id\n  FROM days\n  CROSS JOIN (SELECT DISTINCT group_id FROM x) g\n  WHERE days.prev_dt IS NOT NULL\n    AND $__timeFilter(days.trad_dt::TIMESTAMP)\n),\ndaily AS (\n  SELECT grid.day, grid.group_id,\n    coalesce(sum(ev.added), 0) AS added,\n    coalesce(sum(ev.removed), 0) AS removed,\n    coalesce(any_value(sz.instruments), 0) AS instruments\n  FROM grid\n  LEFT JOIN ev ON ev.day = grid.day AND ev.group_id = grid.group_id\n  LEFT JOIN sz ON sz.trad_dt = grid.day AND sz.group_id = grid.group_id\n  GROUP BY ALL\n)\nSELECT day::TIMESTAMP AS time, group_id::VARCHAR AS group_id, removed::BIGINT AS removed\nFROM daily\nORDER BY time, group_id"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Membership turnover",
+      "description": "Additions plus removals over the group's size that day, per selected group.",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "displayName": "${__field.labels.group_id}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["group_id"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH m AS (\n  SELECT trad_dt, group_id, instrument_id\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nsz AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM m\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM sz\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY group_id\n),\ndays AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n      AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nx AS (\n  SELECT m.trad_dt, m.group_id, days.prev_dt, days.next_dt,\n    lag(m.trad_dt) OVER w AS prev_seen,\n    lead(m.trad_dt) OVER w AS next_seen\n  FROM m\n  JOIN days ON days.trad_dt = m.trad_dt\n  JOIN s ON s.group_id = m.group_id\n  WHERE s.size_class IN ($size_class)\n  WINDOW w AS (PARTITION BY m.group_id, m.instrument_id ORDER BY m.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS day, group_id, 1 AS added, 0 AS removed\n  FROM x\n  WHERE prev_dt IS NOT NULL AND prev_seen IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt AS day, group_id, 0 AS added, 1 AS removed\n  FROM x\n  WHERE next_dt IS NOT NULL AND next_seen IS DISTINCT FROM next_dt\n),\ngrid AS (\n  SELECT days.trad_dt AS day, g.group_id\n  FROM days\n  CROSS JOIN (SELECT DISTINCT group_id FROM x) g\n  WHERE days.prev_dt IS NOT NULL\n    AND $__timeFilter(days.trad_dt::TIMESTAMP)\n),\ndaily AS (\n  SELECT grid.day, grid.group_id,\n    coalesce(sum(ev.added), 0) AS added,\n    coalesce(sum(ev.removed), 0) AS removed,\n    coalesce(any_value(sz.instruments), 0) AS instruments\n  FROM grid\n  LEFT JOIN ev ON ev.day = grid.day AND ev.group_id = grid.group_id\n  LEFT JOIN sz ON sz.trad_dt = grid.day AND sz.group_id = grid.group_id\n  GROUP BY ALL\n)\nSELECT day::TIMESTAMP AS time, group_id::VARCHAR AS group_id, (added + removed) / nullif(instruments, 0) AS turnover\nFROM daily\nORDER BY time, group_id"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Total instruments, stacked by group",
+      "description": "Daily instruments in the selected groups, stacked so the top edge is the total.",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "displayName": "${__field.labels.group_id}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["group_id"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM d\n  GROUP BY group_id\n)\nSELECT d.trad_dt::TIMESTAMP AS time, group_id::VARCHAR AS group_id, instruments::BIGINT AS instruments\nFROM d\nJOIN s USING (group_id)\nWHERE s.size_class IN ($size_class)\nORDER BY time, group_id"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Instruments by size class, stacked",
+      "description": "Daily instruments per size class, stacked; ignores the group filter.",
+      "gridPos": { "x": 0, "y": 41, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "displayName": "${__field.labels.size_class}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["size_class"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM d\n  GROUP BY group_id\n)\nSELECT d.trad_dt::TIMESTAMP AS time, s.size_class, sum(instruments)::BIGINT AS instruments\nFROM d\nJOIN s USING (group_id)\nWHERE s.size_class IN ($size_class)\nGROUP BY ALL\nORDER BY time, s.size_class"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Groups by size class, stacked",
+      "description": "Daily number of groups per size class, stacked; ignores the group filter.",
+      "gridPos": { "x": 12, "y": 41, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "displayName": "${__field.labels.size_class}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["size_class"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM d\n  GROUP BY group_id\n)\nSELECT d.trad_dt::TIMESTAMP AS time, s.size_class, count(*)::BIGINT AS groups\nFROM d\nJOIN s USING (group_id)\nWHERE s.size_class IN ($size_class)\nGROUP BY ALL\nORDER BY time, s.size_class"
+        }
+      ]
+    },
+    {
+      "id": 5,
       "type": "table",
-      "title": "Biggest group size changes (first vs latest day in range)",
-      "description": "Top 20 group size changes between the first and latest day; ignores the group filter.",
-      "gridPos": { "x": 12, "y": 9, "w": 12, "h": 12 },
+      "title": "Selected groups (latest day in range)",
+      "description": "Size, change and presence of the selected groups over the range.",
+      "gridPos": { "x": 0, "y": 50, "w": 24, "h": 10 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {},
         "overrides": [
-          { "matcher": { "id": "byName", "options": "change" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-text" } }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "text", "value": 0 }, { "color": "green", "value": 1 }] } }] },
+          {
+            "matcher": { "id": "byName", "options": "change" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "text", "value": 0 }, { "color": "green", "value": 1 }] } }
+            ]
+          },
           { "matcher": { "id": "byName", "options": "change_pct" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 1 }] }
         ]
       },
@@ -148,21 +417,29 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\nb AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM d\n),\ns AS (\n  SELECT group_id,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = last_day), 0) AS instruments,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = first_day), 0) AS instruments_at_start\n  FROM d CROSS JOIN b\n  GROUP BY group_id\n)\nSELECT group_id::VARCHAR AS group_id,\n  instruments_at_start::BIGINT AS instruments_at_start,\n  instruments::BIGINT AS instruments,\n  (instruments - instruments_at_start)::BIGINT AS change,\n  ((instruments - instruments_at_start) / nullif(instruments_at_start, 0))::DOUBLE AS change_pct\nFROM s\nWHERE instruments <> instruments_at_start\nORDER BY abs(instruments - instruments_at_start) DESC, group_id\nLIMIT 20"
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM d\n  GROUP BY group_id\n)\n, b AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM d\n),\nr AS (\n  SELECT group_id,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = last_day), 0) AS instruments,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = first_day), 0) AS instruments_at_start,\n    max(instruments) AS peak,\n    min(instruments) AS trough,\n    avg(instruments) AS avg_instruments,\n    count(*) AS days_present,\n    min(trad_dt) AS first_seen,\n    max(trad_dt) AS last_seen\n  FROM d\n  CROSS JOIN b\n  GROUP BY group_id\n)\nSELECT group_id::VARCHAR AS group_id,\n  s.size_class,\n  instruments::BIGINT AS instruments,\n  instruments_at_start::BIGINT AS instruments_at_start,\n  (instruments - instruments_at_start)::BIGINT AS change,\n  ((instruments - instruments_at_start) / nullif(instruments_at_start, 0))::DOUBLE AS change_pct,\n  peak::BIGINT AS peak,\n  trough::BIGINT AS trough,\n  round(avg_instruments, 1)::DOUBLE AS avg_instruments,\n  days_present::BIGINT AS days_present,\n  strftime(first_seen, '%Y-%m-%d') AS first_seen,\n  strftime(last_seen, '%Y-%m-%d') AS last_seen\nFROM r\nJOIN s USING (group_id)\nWHERE s.size_class IN ($size_class)\nORDER BY instruments DESC, group_id"
         }
       ]
     },
     {
-      "id": 5,
+      "id": 6,
       "type": "table",
-      "title": "Instruments added/removed in selected groups (within range)",
-      "description": "Instruments that joined or left the selected groups within the range.",
-      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 12 },
+      "title": "Largest groups (latest day in range)",
+      "description": "Top 20 groups by size on the latest day in the selected size classes; ignores the group filter.",
+      "gridPos": { "x": 0, "y": 60, "w": 8, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {},
         "overrides": [
-          { "matcher": { "id": "byName", "options": "status" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-text" } }, { "id": "mappings", "value": [{ "type": "value", "options": { "added": { "color": "green", "index": 0 }, "removed": { "color": "red", "index": 1 } } }] }] }
+          {
+            "matcher": { "id": "byName", "options": "change" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "text", "value": 0 }, { "color": "green", "value": 1 }] } }
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "change_pct" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 1 }] }
         ]
       },
       "options": { "showHeader": true },
@@ -173,7 +450,160 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\nb AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM d\n),\ns AS (\n  SELECT instrument_id, group_id,\n    min(trad_dt) AS first_seen,\n    max(trad_dt) AS last_seen,\n    count(*) AS sessions,\n    any_value(first_day) AS first_day,\n    any_value(last_day) AS last_day\n  FROM d CROSS JOIN b\n  GROUP BY instrument_id, group_id\n)\nSELECT instrument_id::VARCHAR AS instrument_id,\n  group_id::VARCHAR AS group_id,\n  CASE WHEN last_seen < last_day THEN 'removed' ELSE 'added' END AS status,\n  strftime(first_seen, '%Y-%m-%d') AS first_seen,\n  strftime(last_seen, '%Y-%m-%d') AS last_seen,\n  sessions::BIGINT AS sessions\nFROM s\nWHERE first_seen > first_day OR last_seen < last_day\nORDER BY CASE WHEN last_seen < last_day THEN last_seen ELSE first_seen END DESC, group_id, instrument_id\nLIMIT 2000"
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM d\n  GROUP BY group_id\n)\n, b AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM d\n),\nr AS (\n  SELECT group_id,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = last_day), 0) AS instruments,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = first_day), 0) AS instruments_at_start,\n    max(instruments) AS peak,\n    min(instruments) AS trough,\n    avg(instruments) AS avg_instruments,\n    count(*) AS days_present,\n    min(trad_dt) AS first_seen,\n    max(trad_dt) AS last_seen\n  FROM d\n  CROSS JOIN b\n  GROUP BY group_id\n)\nSELECT group_id::VARCHAR AS group_id,\n  s.size_class,\n  instruments_at_start::BIGINT AS instruments_at_start,\n  instruments::BIGINT AS instruments,\n  (instruments - instruments_at_start)::BIGINT AS change,\n  ((instruments - instruments_at_start) / nullif(instruments_at_start, 0))::DOUBLE AS change_pct\nFROM r\nJOIN s USING (group_id)\nWHERE s.size_class IN ($size_class)\nORDER BY instruments DESC, group_id\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Top growers (first vs latest day)",
+      "description": "Top 20 groups by instruments gained in the selected size classes; ignores the group filter.",
+      "gridPos": { "x": 8, "y": 60, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "change" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "text", "value": 0 }, { "color": "green", "value": 1 }] } }
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "change_pct" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 1 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM d\n  GROUP BY group_id\n)\n, b AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM d\n),\nr AS (\n  SELECT group_id,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = last_day), 0) AS instruments,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = first_day), 0) AS instruments_at_start,\n    max(instruments) AS peak,\n    min(instruments) AS trough,\n    avg(instruments) AS avg_instruments,\n    count(*) AS days_present,\n    min(trad_dt) AS first_seen,\n    max(trad_dt) AS last_seen\n  FROM d\n  CROSS JOIN b\n  GROUP BY group_id\n)\nSELECT group_id::VARCHAR AS group_id,\n  s.size_class,\n  instruments_at_start::BIGINT AS instruments_at_start,\n  instruments::BIGINT AS instruments,\n  (instruments - instruments_at_start)::BIGINT AS change,\n  ((instruments - instruments_at_start) / nullif(instruments_at_start, 0))::DOUBLE AS change_pct\nFROM r\nJOIN s USING (group_id)\nWHERE s.size_class IN ($size_class)\n  AND instruments > instruments_at_start\nORDER BY instruments - instruments_at_start DESC, group_id\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Top shrinkers (first vs latest day)",
+      "description": "Top 20 groups by instruments lost in the selected size classes; ignores the group filter.",
+      "gridPos": { "x": 16, "y": 60, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "change" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "text", "value": 0 }, { "color": "green", "value": 1 }] } }
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "change_pct" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 1 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM d\n  GROUP BY group_id\n)\n, b AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM d\n),\nr AS (\n  SELECT group_id,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = last_day), 0) AS instruments,\n    coalesce(max(instruments) FILTER (WHERE trad_dt = first_day), 0) AS instruments_at_start,\n    max(instruments) AS peak,\n    min(instruments) AS trough,\n    avg(instruments) AS avg_instruments,\n    count(*) AS days_present,\n    min(trad_dt) AS first_seen,\n    max(trad_dt) AS last_seen\n  FROM d\n  CROSS JOIN b\n  GROUP BY group_id\n)\nSELECT group_id::VARCHAR AS group_id,\n  s.size_class,\n  instruments_at_start::BIGINT AS instruments_at_start,\n  instruments::BIGINT AS instruments,\n  (instruments - instruments_at_start)::BIGINT AS change,\n  ((instruments - instruments_at_start) / nullif(instruments_at_start, 0))::DOUBLE AS change_pct\nFROM r\nJOIN s USING (group_id)\nWHERE s.size_class IN ($size_class)\n  AND instruments < instruments_at_start\nORDER BY instruments - instruments_at_start ASC, group_id\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Instruments added/removed in selected groups (within range)",
+      "description": "Instruments that joined or left the selected groups within the range.",
+      "gridPos": { "x": 0, "y": 72, "w": 24, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "status" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "mappings", "value": [{ "type": "value", "options": { "added": { "color": "green", "index": 0 }, "removed": { "color": "red", "index": 1 } } }] }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH m AS (\n  SELECT trad_dt, group_id, instrument_id\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR IN ($group)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM (SELECT trad_dt, group_id, count(*) AS instruments FROM m GROUP BY ALL)\n  GROUP BY group_id\n),\nb AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM m\n),\ne AS (\n  SELECT instrument_id, group_id,\n    min(trad_dt) AS first_seen,\n    max(trad_dt) AS last_seen,\n    count(*) AS sessions,\n    any_value(first_day) AS first_day,\n    any_value(last_day) AS last_day\n  FROM m\n  CROSS JOIN b\n  GROUP BY instrument_id, group_id\n)\nSELECT instrument_id::VARCHAR AS instrument_id,\n  group_id::VARCHAR AS group_id,\n  s.size_class,\n  CASE WHEN last_seen < last_day THEN 'removed' ELSE 'added' END AS status,\n  strftime(first_seen, '%Y-%m-%d') AS first_seen,\n  strftime(last_seen, '%Y-%m-%d') AS last_seen,\n  sessions::BIGINT AS sessions\nFROM e\nJOIN s USING (group_id)\nWHERE s.size_class IN ($size_class)\n  AND (first_seen > first_day OR last_seen < last_day)\nORDER BY CASE WHEN last_seen < last_day THEN last_seen ELSE first_seen END DESC, group_id, instrument_id\nLIMIT 2000"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Membership per group",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 84, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 21,
+          "type": "timeseries",
+          "title": "Group $group membership",
+          "description": "Daily size (left axis) with instruments added and removed (right axis), one panel per selected group.",
+          "gridPos": { "x": 0, "y": 85, "w": 24, "h": 9 },
+          "repeat": "group",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "interval": "1d",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "decimals": 0, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+            "overrides": [
+              { "matcher": { "id": "byName", "options": "Instruments" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }] },
+              {
+                "matcher": { "id": "byName", "options": "Added" },
+                "properties": [
+                  { "id": "custom.drawStyle", "value": "bars" },
+                  { "id": "custom.fillOpacity", "value": 80 },
+                  { "id": "custom.axisPlacement", "value": "right" },
+                  { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }
+                ]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Removed" },
+                "properties": [
+                  { "id": "custom.drawStyle", "value": "bars" },
+                  { "id": "custom.fillOpacity", "value": 80 },
+                  { "id": "custom.axisPlacement", "value": "right" },
+                  { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+                ]
+              }
+            ]
+          },
+          "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "WITH m AS (\n  SELECT trad_dt, group_id, instrument_id\n  FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n  WHERE group_id::VARCHAR = $group\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nsz AS (\n  SELECT trad_dt, group_id, count(*) AS instruments\n  FROM m\n  GROUP BY ALL\n),\ns AS (\n  SELECT group_id, CASE\n      WHEN max(instruments) = 1 THEN 'single'\n      WHEN max(instruments) <= 20 THEN 'small'\n      WHEN max(instruments) <= 100 THEN 'medium'\n      WHEN max(instruments) <= 1000 THEN 'large'\n      ELSE 'huge'\n    END AS size_class\n  FROM sz\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY group_id\n),\ndays AS (\n  SELECT trad_dt,\n    lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt,\n    lead(trad_dt) OVER (ORDER BY trad_dt) AS next_dt\n  FROM (\n    SELECT DISTINCT trad_dt\n    FROM read_parquet('s3://uploads/b3_standardized_instrument_groups/daily_parse/*.parquet')\n    WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n      AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  )\n),\nx AS (\n  SELECT m.trad_dt, m.group_id, days.prev_dt, days.next_dt,\n    lag(m.trad_dt) OVER w AS prev_seen,\n    lead(m.trad_dt) OVER w AS next_seen\n  FROM m\n  JOIN days ON days.trad_dt = m.trad_dt\n  JOIN s ON s.group_id = m.group_id\n  WHERE s.size_class IN ($size_class)\n  WINDOW w AS (PARTITION BY m.group_id, m.instrument_id ORDER BY m.trad_dt)\n),\nev AS (\n  SELECT trad_dt AS day, group_id, 1 AS added, 0 AS removed\n  FROM x\n  WHERE prev_dt IS NOT NULL AND prev_seen IS DISTINCT FROM prev_dt\n  UNION ALL\n  SELECT next_dt AS day, group_id, 0 AS added, 1 AS removed\n  FROM x\n  WHERE next_dt IS NOT NULL AND next_seen IS DISTINCT FROM next_dt\n),\ngrid AS (\n  SELECT days.trad_dt AS day, g.group_id\n  FROM days\n  CROSS JOIN (SELECT DISTINCT group_id FROM x) g\n  WHERE days.prev_dt IS NOT NULL\n    AND $__timeFilter(days.trad_dt::TIMESTAMP)\n),\ndaily AS (\n  SELECT grid.day, grid.group_id,\n    coalesce(sum(ev.added), 0) AS added,\n    coalesce(sum(ev.removed), 0) AS removed,\n    coalesce(any_value(sz.instruments), 0) AS instruments\n  FROM grid\n  LEFT JOIN ev ON ev.day = grid.day AND ev.group_id = grid.group_id\n  LEFT JOIN sz ON sz.trad_dt = grid.day AND sz.group_id = grid.group_id\n  GROUP BY ALL\n)\nSELECT day::TIMESTAMP AS time,\n  instruments::BIGINT AS \"Instruments\",\n  added::BIGINT AS \"Added\",\n  (-removed)::BIGINT AS \"Removed\"\nFROM daily\nORDER BY time"
+            }
+          ]
         }
       ]
     }
