@@ -1,0 +1,13 @@
+.git
+.venv
+.env
+.dg
+.ruff_cache
+.tmp_dagster_home_*
+**/__pycache__
+data
+grafana
+*.duckdb
+*.zip
+*.xml
+COTAHIST_*

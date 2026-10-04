@@ -9,6 +9,11 @@ services:
       - 5432:5432
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   minio:
     image: minio/minio:latest
@@ -24,6 +29,65 @@ services:
       - 'mkdir -p /data/uploads && minio server /data --console-address ":9001"'
     volumes:
       - minio_data:/data
+
+  dagster-code:
+    build:
+      context: .
+      dockerfile: Dockerfile.dagster
+    image: ndagster-dagster
+    command: dagster code-server start -h 0.0.0.0 -p 4000 -m ndagster.definitions
+    env_file: .env
+    environment:
+      DAGSTER_PG_HOST: postgres
+      AWS_ENDPOINT_URL: http://minio:9000
+    volumes:
+      - dagster_storage:/opt/dagster/dagster_home/storage
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  dagster-webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile.dagster
+    image: ndagster-dagster
+    command: dagster-webserver -h 0.0.0.0 -p 3000 -w /opt/dagster/dagster_home/workspace.yaml
+    env_file: .env
+    environment:
+      DAGSTER_PG_HOST: postgres
+      AWS_ENDPOINT_URL: http://minio:9000
+    ports:
+      - 3000:3000
+    volumes:
+      - dagster_storage:/opt/dagster/dagster_home/storage
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dagster-code:
+        condition: service_started
+
+  dagster-daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile.dagster
+    image: ndagster-dagster
+    command: dagster-daemon run -w /opt/dagster/dagster_home/workspace.yaml
+    env_file: .env
+    environment:
+      DAGSTER_PG_HOST: postgres
+      AWS_ENDPOINT_URL: http://minio:9000
+    volumes:
+      - dagster_storage:/opt/dagster/dagster_home/storage
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dagster-code:
+        condition: service_started
 
   grafana:
     build:
@@ -46,3 +110,4 @@ volumes:
   postgres_data:
   minio_data:
   grafana_data:
+  dagster_storage:
