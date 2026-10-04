@@ -1,0 +1,318 @@
+{
+  "uid": "bacen-selic-monthly",
+  "title": "BACEN - Selic accumulated in month",
+  "tags": ["bacen"],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": { "from": "now-5y/M", "to": "now/d" },
+  "timepicker": {
+    "refresh_intervals": [],
+    "quick_ranges": [
+      { "display": "Last 6 months", "from": "now-6M/M", "to": "now/d" },
+      { "display": "Last 1 year", "from": "now-1y/M", "to": "now/d" },
+      { "display": "Last 2 years", "from": "now-2y/M", "to": "now/d" },
+      { "display": "Last 3 years", "from": "now-3y/M", "to": "now/d" },
+      { "display": "Last 5 years", "from": "now-5y/M", "to": "now/d" },
+      { "display": "Last 10 years", "from": "now-10y/M", "to": "now/d" },
+      { "display": "Year to date", "from": "now/y", "to": "now/d" },
+      { "display": "Previous year", "from": "now-1y/y", "to": "now-1y/y" }
+    ]
+  },
+  "refresh": "",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Latest month",
+      "description": "Most recent reference month with a published Selic accumulated rate in the range.",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT strftime(max(ref_dt), '%Y-%m') AS month\nFROM read_parquet('s3://uploads/bacen_selic_monthly/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Latest monthly rate",
+      "description": "Selic accumulated in the latest month in range (SGS 4390, % per month).",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT arg_max(value, ref_dt)::DOUBLE AS rate\nFROM read_parquet('s3://uploads/bacen_selic_monthly/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Latest month annualized",
+      "description": "Latest monthly rate compounded over 12 months: (1 + rate)^12 - 1.",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT (power(1 + arg_max(value, ref_dt)::DOUBLE / 100, 12) - 1) * 100 AS annualized\nFROM read_parquet('s3://uploads/bacen_selic_monthly/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Trailing 12 months",
+      "description": "Selic compounded over the 12 months ending at the latest month in range: product of (1 + monthly rate) - 1. Looks back before the range start when needed.",
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value\n  FROM read_parquet('s3://uploads/bacen_selic_monthly/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nl AS (\n  SELECT max(ref_dt) AS last_dt\n  FROM d\n  WHERE $__timeFilter(ref_dt::TIMESTAMP)\n)\nSELECT CASE WHEN count(*) = 12 THEN (product(1 + value::DOUBLE / 100) - 1) * 100 END AS trailing_12m\nFROM d, l\nWHERE ref_dt > last_dt - INTERVAL 12 MONTH\n  AND ref_dt <= last_dt"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Accumulated in range",
+      "description": "Selic compounded over every month in the selected range: product of (1 + monthly rate) - 1.",
+      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT (product(1 + value::DOUBLE / 100) - 1) * 100 AS accumulated\nFROM read_parquet('s3://uploads/bacen_selic_monthly/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Months observed",
+      "description": "Number of reference months with data in the range.",
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT count(*) AS months\nFROM read_parquet('s3://uploads/bacen_selic_monthly/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Selic accumulated in month",
+      "description": "Monthly Selic rate (% per month) by reference month.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "mean", "min", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  ref_dt::TIMESTAMP AS time,\n  value::DOUBLE AS \"Selic in month\"\nFROM read_parquet('s3://uploads/bacen_selic_monthly/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Rolling 12-month accumulated",
+      "description": "Selic compounded over the trailing 12 months ending at each reference month, next to that month's rate annualized ((1 + rate)^12 - 1).",
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value::DOUBLE / 100 AS rate\n  FROM read_parquet('s3://uploads/bacen_selic_monthly/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 12 MONTH\n    AND ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nw AS (\n  SELECT\n    ref_dt,\n    product(1 + rate) OVER w12 - 1 AS trailing_12m,\n    count(*) OVER w12 AS months,\n    power(1 + rate, 12) - 1 AS annualized\n  FROM d\n  WINDOW w12 AS (ORDER BY ref_dt RANGE BETWEEN INTERVAL 11 MONTH PRECEDING AND CURRENT ROW)\n)\nSELECT\n  ref_dt::TIMESTAMP AS time,\n  CASE WHEN months = 12 THEN trailing_12m * 100 END AS \"Trailing 12 months\",\n  annualized * 100 AS \"Month annualized\"\nFROM w\nWHERE $__timeFilter(ref_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Accumulated since range start and year to date",
+      "description": "Selic compounded from the first month in range (growth of an investment earning Selic), and compounded since January of each calendar year.",
+      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value::DOUBLE / 100 AS rate\n  FROM read_parquet('s3://uploads/bacen_selic_monthly/monthly_parse/*.parquet')\n  WHERE year(ref_dt) >= year($__timeFrom()::TIMESTAMP)\n    AND ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nr AS (\n  SELECT ref_dt, product(1 + rate) OVER (ORDER BY ref_dt) - 1 AS since_start\n  FROM d\n  WHERE $__timeFilter(ref_dt::TIMESTAMP)\n),\ny AS (\n  SELECT ref_dt, product(1 + rate) OVER (PARTITION BY year(ref_dt) ORDER BY ref_dt) - 1 AS ytd\n  FROM d\n)\nSELECT\n  ref_dt::TIMESTAMP AS time,\n  since_start * 100 AS \"Since range start\",\n  ytd * 100 AS \"Year to date\"\nFROM r\nJOIN y USING (ref_dt)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Calendar-year accumulated",
+      "description": "Selic compounded per calendar year (full years overlapping the range); the current year is year to date.",
+      "gridPos": { "x": 0, "y": 22, "w": 9, "h": 10 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "months" }, "properties": [{ "id": "unit", "value": "none" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "year" }, "properties": [{ "id": "unit", "value": "string" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  year(ref_dt)::VARCHAR AS year,\n  count(*) AS months,\n  (product(1 + value::DOUBLE / 100) - 1) * 100 AS accumulated,\n  avg(value)::DOUBLE AS avg_month,\n  min(value)::DOUBLE AS min_month,\n  max(value)::DOUBLE AS max_month\nFROM read_parquet('s3://uploads/bacen_selic_monthly/monthly_parse/*.parquet')\nWHERE year(ref_dt) BETWEEN year($__timeFrom()::TIMESTAMP) AND year($__timeTo()::TIMESTAMP)\nGROUP BY ALL\nORDER BY year DESC"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "Monthly rate by year",
+      "description": "Selic accumulated in each month (% per month), one row per calendar year overlapping the range, with the compounded year total.",
+      "gridPos": { "x": 9, "y": 22, "w": 15, "h": 10 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "year" }, "properties": [{ "id": "unit", "value": "string" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  year(ref_dt)::VARCHAR AS year,\n  any_value(value) FILTER (WHERE month(ref_dt) = 1)::DOUBLE AS \"Jan\",\n  any_value(value) FILTER (WHERE month(ref_dt) = 2)::DOUBLE AS \"Feb\",\n  any_value(value) FILTER (WHERE month(ref_dt) = 3)::DOUBLE AS \"Mar\",\n  any_value(value) FILTER (WHERE month(ref_dt) = 4)::DOUBLE AS \"Apr\",\n  any_value(value) FILTER (WHERE month(ref_dt) = 5)::DOUBLE AS \"May\",\n  any_value(value) FILTER (WHERE month(ref_dt) = 6)::DOUBLE AS \"Jun\",\n  any_value(value) FILTER (WHERE month(ref_dt) = 7)::DOUBLE AS \"Jul\",\n  any_value(value) FILTER (WHERE month(ref_dt) = 8)::DOUBLE AS \"Aug\",\n  any_value(value) FILTER (WHERE month(ref_dt) = 9)::DOUBLE AS \"Sep\",\n  any_value(value) FILTER (WHERE month(ref_dt) = 10)::DOUBLE AS \"Oct\",\n  any_value(value) FILTER (WHERE month(ref_dt) = 11)::DOUBLE AS \"Nov\",\n  any_value(value) FILTER (WHERE month(ref_dt) = 12)::DOUBLE AS \"Dec\",\n  (product(1 + value::DOUBLE / 100) - 1) * 100 AS year_total\nFROM read_parquet('s3://uploads/bacen_selic_monthly/monthly_parse/*.parquet')\nWHERE year(ref_dt) BETWEEN year($__timeFrom()::TIMESTAMP) AND year($__timeTo()::TIMESTAMP)\nGROUP BY ALL\nORDER BY year DESC"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "table",
+      "title": "Monthly detail",
+      "description": "Every reference month in range: monthly rate, change vs the previous month (percentage points), the rate annualized, year-to-date and trailing 12-month compounded rates, and the SGS blocked flag.",
+      "gridPos": { "x": 0, "y": 32, "w": 24, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "month" }, "properties": [{ "id": "unit", "value": "string" }] },
+          { "matcher": { "id": "byName", "options": "change_pp" }, "properties": [{ "id": "unit", "value": "suffix: p.p." }] },
+          { "matcher": { "id": "byName", "options": "blocked" }, "properties": [{ "id": "unit", "value": "bool_yes_no" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value::DOUBLE / 100 AS rate, blocked\n  FROM read_parquet('s3://uploads/bacen_selic_monthly/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 12 MONTH\n    AND ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nw AS (\n  SELECT\n    ref_dt,\n    rate,\n    blocked,\n    rate - lag(rate) OVER (ORDER BY ref_dt) AS change,\n    product(1 + rate) OVER (PARTITION BY year(ref_dt) ORDER BY ref_dt) - 1 AS ytd,\n    product(1 + rate) OVER w12 - 1 AS trailing_12m,\n    count(*) OVER w12 AS months\n  FROM d\n  WINDOW w12 AS (ORDER BY ref_dt RANGE BETWEEN INTERVAL 11 MONTH PRECEDING AND CURRENT ROW)\n)\nSELECT\n  strftime(ref_dt, '%Y-%m') AS month,\n  rate * 100 AS rate,\n  change * 100 AS change_pp,\n  (power(1 + rate, 12) - 1) * 100 AS annualized,\n  ytd * 100 AS ytd,\n  CASE WHEN months = 12 THEN trailing_12m * 100 END AS trailing_12m,\n  blocked\nFROM w\nWHERE $__timeFilter(ref_dt::TIMESTAMP)\nORDER BY ref_dt DESC"
+        }
+      ]
+    }
+  ]
+}
