@@ -25,32 +25,31 @@
   "templating": {
     "list": [
       {
-        "name": "product",
-        "label": "Product",
-        "type": "query",
-        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "SELECT DISTINCT left(ticker, 3) AS product\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "definition": "SELECT DISTINCT left(ticker, 3) AS product\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "refresh": 2,
+        "name": "instrument_type",
+        "label": "Type",
+        "type": "custom",
+        "query": "Futures : future, Options : option, Weekly / daily options : weekly_option, Single stock futures : stock_future, Other : other",
+        "current": { "text": ["Futures"], "value": ["future"] },
         "multi": true,
-        "includeAll": true,
-        "allValue": "'__all'",
-        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
-        "sort": 0
+        "includeAll": false
       },
       {
         "name": "ticker",
-        "label": "Ticker (other limit > 0)",
+        "label": "Ticker",
         "type": "query",
         "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\nWHERE other_limit > 0\n  AND $__timeFilter(trad_dt::TIMESTAMP)\n  AND ('__all' IN ($product) OR left(ticker, 3) IN ($product))\nORDER BY 1",
-        "definition": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\nWHERE other_limit > 0\n  AND $__timeFilter(trad_dt::TIMESTAMP)\n  AND ('__all' IN ($product) OR left(ticker, 3) IN ($product))\nORDER BY 1",
+        "query": "SELECT ticker\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\nWHERE CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ticker\nORDER BY max(other_limit) DESC, count(*) DESC, ticker\nLIMIT 1000",
+        "definition": "SELECT ticker\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\nWHERE CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ticker\nORDER BY max(other_limit) DESC, count(*) DESC, ticker\nLIMIT 1000",
         "refresh": 2,
+        "sort": 0,
+        "current": {
+          "selected": true,
+          "text": ["DDIX26", "DDIZ26", "DDIF27", "DDIJ27", "DDIN27", "DDIF28", "DDIF29", "DDIF30"],
+          "value": ["DDIX26", "DDIZ26", "DDIF27", "DDIJ27", "DDIN27", "DDIF28", "DDIF29", "DDIF30"]
+        },
         "multi": true,
-        "includeAll": true,
-        "allValue": "'__all'",
-        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
-        "sort": 0
+        "includeAll": false,
+        "allowCustomValue": true
       }
     ]
   },
@@ -58,22 +57,12 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "Instruments (latest day in range)",
-      "description": "Instruments, products and non-zero other limits on the latest day.",
-      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 9 },
+      "title": "Total other limit (latest day)",
+      "description": "Sum of the other limit of the selected tickers on the latest day in the range.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
-        "orientation": "horizontal",
-        "textMode": "value_and_name",
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto"
-      },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
@@ -81,30 +70,19 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($product) OR left(ticker, 3) IN ($product))\n    AND ('__all' IN ($ticker) OR ticker IN ($ticker))\n)\nSELECT count(*)::BIGINT AS instruments,\n  count(DISTINCT left(ticker, 3))::BIGINT AS products,\n  count(*) FILTER (WHERE other_limit > 0)::BIGINT AS with_other_limit\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, other_limit\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT sum(other_limit)::DOUBLE AS other_limit\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
         }
       ]
     },
     {
       "id": 2,
-      "type": "timeseries",
-      "title": "Instruments per day by product (top 12)",
-      "description": "Instruments per day by product (top 12, rest as 'others').",
-      "gridPos": { "x": 6, "y": 0, "w": 18, "h": 9 },
-      "interval": "1d",
+      "type": "stat",
+      "title": "Tickers with a limit (latest day)",
+      "description": "How many of the selected tickers have a non-zero other limit on the latest day in the range.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "displayName": "${__field.labels.product}",
-          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
-        },
-        "overrides": []
-      },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "transformations": [
-        { "id": "partitionByValues", "options": { "fields": ["product"], "keepFields": false, "naming": { "asLabels": true } } }
-      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
@@ -112,16 +90,56 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT trad_dt, left(ticker, 3) AS product\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($product) OR left(ticker, 3) IN ($product))\n    AND ('__all' IN ($ticker) OR ticker IN ($ticker))\n),\ntop_products AS (\n  SELECT product FROM d GROUP BY product ORDER BY count(*) DESC LIMIT 12\n)\nSELECT trad_dt::TIMESTAMP AS time,\n  CASE WHEN product IN (SELECT product FROM top_products) THEN product ELSE 'others' END AS product,\n  count(*)::BIGINT AS instruments\nFROM d\nGROUP BY ALL\nORDER BY time, product"
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, other_limit\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(*) FILTER (WHERE other_limit > 0) AS tickers\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
         }
       ]
     },
     {
       "id": 3,
+      "type": "stat",
+      "title": "Instruments listed (latest day)",
+      "description": "Instruments of the selected types in the file on the latest day; ignores the ticker filter.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(*) AS instruments\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Latest trading day",
+      "description": "Most recent trading day with data for the selected tickers in the range.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT strftime(max(trad_dt), '%Y-%m-%d') AS latest\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 10,
       "type": "timeseries",
-      "title": "Other limit per contract",
-      "description": "Daily other limit per contract, only contracts with a non-zero value.",
-      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 10 },
+      "title": "Other limit per ticker",
+      "description": "Daily other limit per selected ticker.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
@@ -132,7 +150,10 @@
         },
         "overrides": []
       },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
       "transformations": [
         { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
       ],
@@ -143,16 +164,255 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($product) OR left(ticker, 3) IN ($product))\n    AND ('__all' IN ($ticker) OR ticker IN ($ticker))\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, other_limit::DOUBLE AS other_limit\nFROM d\nWHERE ticker IN (SELECT ticker FROM d WHERE other_limit > 0)\nORDER BY time, ticker"
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, ticker, other_limit::DOUBLE AS other_limit\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time, ticker"
         }
       ]
     },
     {
-      "id": 4,
+      "id": 11,
+      "type": "timeseries",
+      "title": "Change since start of range",
+      "description": "Other limit relative to each ticker's first value in the range, to compare tickers on one scale.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH daily AS (\n  SELECT trad_dt::TIMESTAMP AS time, ticker, other_limit::DOUBLE AS other_limit\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT time, ticker, other_limit / nullif(first_value(other_limit) OVER (PARTITION BY ticker ORDER BY time), 0) - 1 AS change\nFROM daily\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Daily change",
+      "description": "Other limit minus the previous trading day's value per selected ticker; the legend sum is the net change in the range.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH daily AS (\n  SELECT trad_dt::TIMESTAMP AS time, ticker, other_limit::DOUBLE AS other_limit\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nchanges AS (\n  SELECT time, ticker, other_limit - lag(other_limit) OVER (PARTITION BY ticker ORDER BY time) AS change\n  FROM daily\n)\nSELECT time, ticker, change\nFROM changes\nWHERE $__timeFilter(time)\n  AND change IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Share of total other limit",
+      "description": "Each selected ticker's other limit over the sum across all tickers of the selected types that day.",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, ticker, other_limit::DOUBLE AS other_limit\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\ntot AS (\n  SELECT trad_dt, sum(other_limit) AS total\n  FROM d\n  GROUP BY trad_dt\n)\nSELECT d.trad_dt::TIMESTAMP AS time, d.ticker, d.other_limit / nullif(tot.total, 0) AS share\nFROM d\nJOIN tot ON tot.trad_dt = d.trad_dt\nWHERE d.ticker IN ($ticker)\nORDER BY time, d.ticker"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Total other limit, stacked by ticker",
+      "description": "Daily other limit of the selected tickers, stacked so the top edge is the total.",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, ticker, other_limit::DOUBLE AS other_limit\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Instruments listed per day by product (top 10)",
+      "description": "Instruments of the selected types per day by product root, stacked (rest as 'others'); ignores the ticker filter.",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.product}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["product"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, CASE WHEN length(ticker) = 8 THEN left(ticker, 4) ELSE left(ticker, 3) END AS product\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\ntop_products AS (\n  SELECT product FROM d GROUP BY product ORDER BY count(*) DESC, product LIMIT 10\n)\nSELECT trad_dt::TIMESTAMP AS time,\n  CASE WHEN product IN (SELECT product FROM top_products) THEN product ELSE 'others' END AS product,\n  count(*) AS instruments\nFROM d\nGROUP BY ALL\nORDER BY time, product"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Instruments added / removed per day",
+      "description": "Instruments of the selected types that appeared (positive) or disappeared (negative) vs the previous trading day; ignores the ticker filter.",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "showPoints": "never", "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Added" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "Removed" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT DISTINCT trad_dt, ticker\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\ndays AS (\n  SELECT trad_dt, lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt\n  FROM (SELECT DISTINCT trad_dt FROM d)\n),\ncur AS (\n  SELECT d.trad_dt, d.ticker, days.prev_dt\n  FROM d\n  JOIN days ON days.trad_dt = d.trad_dt\n  WHERE days.prev_dt IS NOT NULL\n),\nprv AS (\n  SELECT days.trad_dt, d.ticker\n  FROM days\n  JOIN d ON d.trad_dt = days.prev_dt\n),\nadded AS (\n  SELECT c.trad_dt, count(*) AS n\n  FROM cur c\n  ANTI JOIN d p ON p.trad_dt = c.prev_dt AND p.ticker = c.ticker\n  GROUP BY c.trad_dt\n),\nremoved AS (\n  SELECT p.trad_dt, count(*) AS n\n  FROM prv p\n  ANTI JOIN d c ON c.trad_dt = p.trad_dt AND c.ticker = p.ticker\n  GROUP BY p.trad_dt\n)\nSELECT days.trad_dt::TIMESTAMP AS time,\n  coalesce(a.n, 0) AS \"Added\",\n  -coalesce(r.n, 0) AS \"Removed\"\nFROM days\nLEFT JOIN added a ON a.trad_dt = days.trad_dt\nLEFT JOIN removed r ON r.trad_dt = days.trad_dt\nWHERE days.prev_dt IS NOT NULL\n  AND $__timeFilter(days.trad_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "barchart",
+      "title": "Limit curve: start vs end of range",
+      "description": "Other limit per ticker on the first and latest day in the range, ordered by maturity; ignores the ticker filter.",
+      "gridPos": { "x": 0, "y": 41, "w": 24, "h": 9 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 80, "lineWidth": 1 } },
+        "overrides": []
+      },
+      "options": {
+        "xField": "ticker",
+        "orientation": "vertical",
+        "xTickLabelRotation": -45,
+        "xTickLabelSpacing": 0,
+        "showValue": "never",
+        "stacking": "none",
+        "groupWidth": 0.7,
+        "barWidth": 0.97,
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, ticker, other_limit::DOUBLE AS other_limit\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\nbounds AS (\n  SELECT min(trad_dt) AS first_dt, max(trad_dt) AS last_dt FROM d\n),\ncurve AS (\n  SELECT\n    ticker,\n    max(other_limit) FILTER (WHERE trad_dt = first_dt) AS start_of_range,\n    max(other_limit) FILTER (WHERE trad_dt = last_dt) AS latest_day\n  FROM d, bounds\n  GROUP BY ticker\n)\nSELECT ticker, start_of_range, latest_day\nFROM curve\nWHERE start_of_range > 0 OR latest_day > 0\nORDER BY try_cast(substr(ticker, 5, 2) AS INTEGER) NULLS LAST, position(substr(ticker, 4, 1) IN 'FGHJKMNQUVXZ'), ticker"
+        }
+      ]
+    },
+    {
+      "id": 5,
       "type": "table",
-      "title": "Non-zero limits vs previous day (latest day in range)",
-      "description": "Non-zero limits on the latest day compared with the previous day.",
-      "gridPos": { "x": 0, "y": 19, "w": 12, "h": 14 },
+      "title": "Selected tickers (latest day in range)",
+      "description": "Limits of the selected tickers on the latest day vs the previous day and the start of the range.",
+      "gridPos": { "x": 0, "y": 50, "w": 24, "h": 10 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {},
@@ -176,16 +436,83 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($product) OR left(ticker, 3) IN ($product))\n    AND ('__all' IN ($ticker) OR ticker IN ($ticker))\n),\ncur AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d)\n),\nprv AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d WHERE trad_dt < (SELECT max(trad_dt) FROM d))\n)\nSELECT c.ticker,\n  c.instrument_id,\n  c.liquidity_limit::DOUBLE AS liquidity_limit,\n  p.other_limit::DOUBLE AS prev_other_limit,\n  c.other_limit::DOUBLE AS other_limit,\n  (c.other_limit - p.other_limit)::DOUBLE AS other_limit_change\nFROM cur c\nLEFT JOIN prv p ON c.instrument_id = p.instrument_id\nWHERE c.other_limit > 0 OR c.liquidity_limit > 0 OR p.other_limit > 0\nORDER BY c.other_limit DESC, c.ticker"
+          "rawSql": "WITH d AS (\n  SELECT *, CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END AS instrument_type\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\ncur AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d)\n),\nprv AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d WHERE trad_dt < (SELECT max(trad_dt) FROM d))\n),\nrng AS (\n  SELECT ticker,\n    arg_min(other_limit, trad_dt) AS first_other_limit,\n    count(*) FILTER (WHERE other_limit > 0) AS days_with_limit\n  FROM d\n  GROUP BY ticker\n)\nSELECT c.ticker,\n  c.instrument_id,\n  c.instrument_type AS type,\n  c.liquidity_limit::DOUBLE AS liquidity_limit,\n  r.first_other_limit::DOUBLE AS range_start_other_limit,\n  p.other_limit::DOUBLE AS prev_other_limit,\n  c.other_limit::DOUBLE AS other_limit,\n  (c.other_limit - p.other_limit)::DOUBLE AS other_limit_change,\n  r.days_with_limit\nFROM cur c\nLEFT JOIN prv p ON p.ticker = c.ticker\nLEFT JOIN rng r ON r.ticker = c.ticker\nORDER BY c.other_limit DESC, c.ticker"
         }
       ]
     },
     {
-      "id": 5,
+      "id": 6,
       "type": "table",
-      "title": "Instruments added / removed vs previous day (latest day in range)",
-      "description": "Instruments added or removed vs the previous day.",
-      "gridPos": { "x": 12, "y": 19, "w": 12, "h": 14 },
+      "title": "Largest other limits (latest day)",
+      "description": "Top 20 other limits in the selected types on the latest day; ignores the ticker filter.",
+      "gridPos": { "x": 0, "y": 60, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "_limit$" }, "properties": [{ "id": "unit", "value": "short" }] },
+          {
+            "matcher": { "id": "byName", "options": "change" },
+            "properties": [
+              { "id": "unit", "value": "short" },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "text", "value": 0 }, { "color": "green", "value": 0.0001 }] } }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, ticker, other_limit\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\ncur AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d)\n),\nprv AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d WHERE trad_dt < (SELECT max(trad_dt) FROM d))\n)\nSELECT c.ticker,\n  p.other_limit::DOUBLE AS prev_other_limit,\n  c.other_limit::DOUBLE AS other_limit,\n  (c.other_limit - p.other_limit)::DOUBLE AS change\nFROM cur c\nLEFT JOIN prv p ON p.ticker = c.ticker\nWHERE c.other_limit > 0\nORDER BY c.other_limit DESC, c.ticker\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Biggest limit changes (range)",
+      "description": "Top 20 absolute changes from first to last other limit in the range in the selected types; ignores the ticker filter.",
+      "gridPos": { "x": 8, "y": 60, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "_limit$" }, "properties": [{ "id": "unit", "value": "short" }] },
+          {
+            "matcher": { "id": "byName", "options": "change" },
+            "properties": [
+              { "id": "unit", "value": "short" },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "text", "value": 0 }, { "color": "green", "value": 0.0001 }] } }
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "change_pct" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH r AS (\n  SELECT\n    ticker,\n    arg_min(other_limit, trad_dt)::DOUBLE AS first_other_limit,\n    arg_max(other_limit, trad_dt)::DOUBLE AS last_other_limit\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ticker\n)\nSELECT ticker,\n  first_other_limit,\n  last_other_limit,\n  last_other_limit - first_other_limit AS change,\n  last_other_limit / nullif(first_other_limit, 0) - 1 AS change_pct\nFROM r\nWHERE last_other_limit <> first_other_limit\nORDER BY abs(last_other_limit - first_other_limit) DESC, ticker\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Instruments added / removed (latest day)",
+      "description": "Instruments of the selected types added or removed vs the previous trading day; ignores the ticker filter.",
+      "gridPos": { "x": 16, "y": 60, "w": 8, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {},
@@ -208,7 +535,49 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($product) OR left(ticker, 3) IN ($product))\n    AND ('__all' IN ($ticker) OR ticker IN ($ticker))\n),\ncur AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d)\n),\nprv AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d WHERE trad_dt < (SELECT max(trad_dt) FROM d))\n)\nSELECT 'added' AS status, c.ticker, c.instrument_id, c.other_limit::DOUBLE AS other_limit\nFROM cur c\nWHERE NOT EXISTS (SELECT 1 FROM prv p WHERE p.instrument_id = c.instrument_id)\n  AND EXISTS (SELECT 1 FROM prv)\nUNION ALL\nSELECT 'removed' AS status, p.ticker, p.instrument_id, p.other_limit::DOUBLE AS other_limit\nFROM prv p\nWHERE NOT EXISTS (SELECT 1 FROM cur c WHERE c.instrument_id = p.instrument_id)\nORDER BY status, ticker\nLIMIT 2000"
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, ticker, instrument_id, other_limit\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\n  WHERE CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\ncur AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d)\n),\nprv AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d WHERE trad_dt < (SELECT max(trad_dt) FROM d))\n)\nSELECT 'added' AS status, c.ticker, c.instrument_id, c.other_limit::DOUBLE AS other_limit\nFROM cur c\nWHERE NOT EXISTS (SELECT 1 FROM prv p WHERE p.instrument_id = c.instrument_id)\n  AND EXISTS (SELECT 1 FROM prv)\nUNION ALL\nSELECT 'removed' AS status, p.ticker, p.instrument_id, p.other_limit::DOUBLE AS other_limit\nFROM prv p\nWHERE NOT EXISTS (SELECT 1 FROM cur c WHERE c.instrument_id = p.instrument_id)\nORDER BY status, ticker\nLIMIT 2000"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Limits per ticker",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 72, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 21,
+          "type": "timeseries",
+          "title": "$ticker limits",
+          "description": "Daily other limit and liquidity limit, one panel per selected ticker.",
+          "gridPos": { "x": 0, "y": 73, "w": 24, "h": 8 },
+          "repeat": "ticker",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "interval": "1d",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 20 }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "SELECT\n  trad_dt::TIMESTAMP AS time,\n  other_limit::DOUBLE AS \"Other limit\",\n  liquidity_limit::DOUBLE AS \"Liquidity limit\"\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits_other/daily_parse/*.parquet')\nWHERE ticker = $ticker\n  AND CASE length(ticker) WHEN 6 THEN 'future' WHEN 8 THEN 'stock_future' WHEN 13 THEN 'option' WHEN 15 THEN 'weekly_option' WHEN 17 THEN 'weekly_option' ELSE 'other' END IN ($instrument_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time"
+            }
+          ]
         }
       ]
     }
