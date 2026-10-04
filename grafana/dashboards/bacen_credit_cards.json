@@ -1,0 +1,284 @@
+{
+  "uid": "bacen-credit-cards",
+  "title": "BACEN - Active credit cards",
+  "description": "Active credit cards in Brazil, in millions (BACEN SGS 25149, annual). The series was discontinued after 2022; 2022 is the last published year.",
+  "tags": ["bacen"],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": { "from": "2010-01-01T00:00:00.000Z", "to": "now/y" },
+  "timepicker": {
+    "refresh_intervals": [],
+    "quick_ranges": [
+      { "display": "Last 5 years", "from": "now-5y/y", "to": "now/y" },
+      { "display": "Last 10 years", "from": "now-10y/y", "to": "now/y" },
+      { "display": "Last 20 years", "from": "now-20y/y", "to": "now/y" }
+    ]
+  },
+  "links": [
+    {
+      "title": "SGS 25149 dataset",
+      "type": "link",
+      "url": "https://dadosabertos.bcb.gov.br/dataset/25149-cartoes-de-credito-ativos",
+      "targetBlank": true,
+      "icon": "external link"
+    }
+  ],
+  "refresh": "",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Active cards (latest year)",
+      "description": "Active credit cards in the latest year in range, in millions.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "suffix: M", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT arg_max(value, ref_dt)::DOUBLE AS active_cards\nFROM read_parquet('s3://uploads/bacen_credit_cards/yearly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Year-over-year change (latest year)",
+      "description": "Active cards in the latest year in range vs the previous year (the previous year may fall outside the range).",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    ref_dt,\n    value::DOUBLE AS value,\n    lag(value::DOUBLE) OVER (ORDER BY ref_dt) AS prev_value\n  FROM read_parquet('s3://uploads/bacen_credit_cards/yearly_parse/*.parquet')\n)\nSELECT value / nullif(prev_value, 0) - 1 AS yoy_change\nFROM d\nWHERE $__timeFilter(ref_dt::TIMESTAMP)\nORDER BY ref_dt DESC\nLIMIT 1"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "CAGR in range",
+      "description": "Compound annual growth rate of active cards from the first to the last year in range.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  pow(\n    arg_max(value, ref_dt)::DOUBLE / nullif(arg_min(value, ref_dt)::DOUBLE, 0),\n    1 / nullif(year(max(ref_dt)) - year(min(ref_dt)), 0)\n  ) - 1 AS cagr\nFROM read_parquet('s3://uploads/bacen_credit_cards/yearly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Latest year",
+      "description": "Most recent year with data in range. The series was discontinued after 2022.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT strftime(max(ref_dt), '%Y') AS latest_year\nFROM read_parquet('s3://uploads/bacen_credit_cards/yearly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "barchart",
+      "title": "Active credit cards per year",
+      "description": "Active credit cards at each year, in millions (SGS 25149).",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 9 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "suffix: M", "decimals": 0, "custom": { "fillOpacity": 80 } },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "vertical",
+        "xField": "year",
+        "showValue": "always",
+        "legend": { "showLegend": false, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  strftime(ref_dt, '%Y') AS year,\n  value::DOUBLE AS \"Active cards\"\nFROM read_parquet('s3://uploads/bacen_credit_cards/yearly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)\nORDER BY ref_dt"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "barchart",
+      "title": "Year-over-year change",
+      "description": "Active cards vs the previous year, in percent.",
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 9 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] },
+          "custom": { "fillOpacity": 80 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "vertical",
+        "xField": "year",
+        "showValue": "always",
+        "legend": { "showLegend": false, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    ref_dt,\n    value::DOUBLE AS value,\n    lag(value::DOUBLE) OVER (ORDER BY ref_dt) AS prev_value\n  FROM read_parquet('s3://uploads/bacen_credit_cards/yearly_parse/*.parquet')\n)\nSELECT\n  strftime(ref_dt, '%Y') AS year,\n  value / nullif(prev_value, 0) - 1 AS \"YoY change\"\nFROM d\nWHERE $__timeFilter(ref_dt::TIMESTAMP)\n  AND prev_value IS NOT NULL\nORDER BY ref_dt"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "barchart",
+      "title": "Net cards added per year",
+      "description": "Active cards minus the previous year's, in millions.",
+      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 9 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: M",
+          "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] },
+          "custom": { "fillOpacity": 80 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "vertical",
+        "xField": "year",
+        "showValue": "always",
+        "legend": { "showLegend": false, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    ref_dt,\n    value::DOUBLE AS value,\n    lag(value::DOUBLE) OVER (ORDER BY ref_dt) AS prev_value\n  FROM read_parquet('s3://uploads/bacen_credit_cards/yearly_parse/*.parquet')\n)\nSELECT\n  strftime(ref_dt, '%Y') AS year,\n  value - prev_value AS \"Net cards added\"\nFROM d\nWHERE $__timeFilter(ref_dt::TIMESTAMP)\n  AND prev_value IS NOT NULL\nORDER BY ref_dt"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Growth since start of range",
+      "description": "Active cards relative to the first year in range.",
+      "gridPos": { "x": 0, "y": 22, "w": 12, "h": 12 },
+      "interval": "1y",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "lineWidth": 2, "showPoints": "always", "pointSize": 6 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": false, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  ref_dt::TIMESTAMP AS time,\n  value::DOUBLE / nullif(first_value(value::DOUBLE) OVER (ORDER BY ref_dt), 0) - 1 AS \"Growth since start\"\nFROM read_parquet('s3://uploads/bacen_credit_cards/yearly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Active cards per year",
+      "description": "Active cards (millions), change vs the previous year and growth since the first year in range. The series was discontinued after 2022.",
+      "gridPos": { "x": 12, "y": 22, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "_millions$" }, "properties": [{ "id": "unit", "value": "suffix: M" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byRegexp", "options": "change_pct|growth" }, "properties": [{ "id": "unit", "value": "percentunit" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    ref_dt,\n    value::DOUBLE AS value,\n    lag(value::DOUBLE) OVER (ORDER BY ref_dt) AS prev_value,\n    blocked\n  FROM read_parquet('s3://uploads/bacen_credit_cards/yearly_parse/*.parquet')\n)\nSELECT\n  strftime(ref_dt, '%Y') AS year,\n  value AS cards_millions,\n  value - prev_value AS change_millions,\n  value / nullif(prev_value, 0) - 1 AS change_pct,\n  value / nullif(first_value(value) OVER (ORDER BY ref_dt), 0) - 1 AS growth_since_start,\n  blocked\nFROM d\nWHERE $__timeFilter(ref_dt::TIMESTAMP)\nORDER BY ref_dt DESC"
+        }
+      ]
+    }
+  ]
+}
