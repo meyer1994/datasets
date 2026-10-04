@@ -27,26 +27,353 @@
       {
         "name": "family",
         "label": "Formula family",
+        "type": "custom",
+        "query": "Future : future, Option : option, Fixed income : fixed_income, Forward : forward, Swap : swap, OTC option : otc_option, Repo : repo, Spot : spot, No risk : no_risk",
+        "current": { "text": ["Future"], "value": ["future"] },
+        "multi": true,
+        "includeAll": false
+      },
+      {
+        "name": "formula",
+        "label": "Formula",
         "type": "query",
         "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "SELECT DISTINCT formula_family\nFROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "definition": "SELECT DISTINCT formula_family\nFROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "query": "SELECT lpad(formula_id::VARCHAR, 3, '0') || ' ' || arg_max(formula_name, trad_dt) AS formula\nFROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\nWHERE formula_family IN ($family)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY formula_id\nORDER BY formula_id",
+        "definition": "SELECT lpad(formula_id::VARCHAR, 3, '0') || ' ' || arg_max(formula_name, trad_dt) AS formula\nFROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\nWHERE formula_family IN ($family)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY formula_id\nORDER BY formula_id",
         "refresh": 2,
+        "sort": 0,
+        "current": {
+          "selected": true,
+          "text": ["001 Futuro de Taxa de Câmbio", "004 Futuro de Ouro", "006 Futuro de DI1", "007 Futuro de Cupom Cambial", "008 Futuro de Índice", "009 Futuro de Cupom de Inflação", "014 Futuro de Índice S&P"],
+          "value": ["001 Futuro de Taxa de Câmbio", "004 Futuro de Ouro", "006 Futuro de DI1", "007 Futuro de Cupom Cambial", "008 Futuro de Índice", "009 Futuro de Cupom de Inflação", "014 Futuro de Índice S&P"]
+        },
         "multi": true,
-        "includeAll": true,
-        "allValue": "'__all'",
-        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
-        "sort": 0
+        "includeAll": false,
+        "allowCustomValue": true
       }
     ]
   },
   "panels": [
     {
       "id": 1,
+      "type": "stat",
+      "title": "Formulas published (latest day)",
+      "description": "How many of the selected formulas are in the latest file in the range.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, formula_id\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE formula_family IN ($family)\n    AND formula_id IN (SELECT TRY_CAST(split_part(f, ' ', 1) AS BIGINT) FROM unnest([$formula]) AS u(f))\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(DISTINCT formula_id) AS formulas\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Publication days",
+      "description": "Days in the range with at least one selected formula published.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT count(DISTINCT trad_dt) AS days\nFROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\nWHERE formula_family IN ($family)\n  AND formula_id IN (SELECT TRY_CAST(split_part(f, ' ', 1) AS BIGINT) FROM unnest([$formula]) AS u(f))\n  AND $__timeFilter(trad_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Coverage",
+      "description": "Share of file days in the range on which each selected formula was present, averaged over the formulas.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1, "min": 0, "max": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, formula_id\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE formula_family IN ($family)\n    AND formula_id IN (SELECT TRY_CAST(split_part(f, ' ', 1) AS BIGINT) FROM unnest([$formula]) AS u(f))\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\ndays AS (\n  SELECT count(DISTINCT trad_dt) AS n\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(*) / nullif(count(DISTINCT formula_id) * (SELECT n FROM days), 0) AS coverage\nFROM d"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Changes in range",
+      "description": "Selected formulas added, removed or renamed vs the previous file, summed over the range.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH raw AS (\n  SELECT trad_dt, formula_id, formula_name, formula_family\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\ndays AS (\n  SELECT trad_dt, lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt\n  FROM (SELECT DISTINCT trad_dt FROM raw)\n),\nd AS (\n  SELECT *\n  FROM raw\n  WHERE formula_family IN ($family)\n    AND formula_id IN (SELECT TRY_CAST(split_part(f, ' ', 1) AS BIGINT) FROM unnest([$formula]) AS u(f))\n),\ncur AS (\n  SELECT d.*\n  FROM d\n  JOIN days USING (trad_dt)\n  WHERE days.prev_dt IS NOT NULL\n),\nprv AS (\n  SELECT days.trad_dt, d.formula_id, d.formula_name\n  FROM days\n  JOIN d ON d.trad_dt = days.prev_dt\n)\nSELECT count(*) AS changes\nFROM cur c\nFULL JOIN prv p\n  ON c.trad_dt = p.trad_dt\n  AND c.formula_id = p.formula_id\nWHERE (p.formula_id IS NULL OR c.formula_id IS NULL OR c.formula_name <> p.formula_name)\n  AND $__timeFilter(coalesce(c.trad_dt, p.trad_dt)::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Formula presence",
+      "description": "1 when the selected formula is in that day's file, 0 when it is missing.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 8 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "min": 0,
+          "max": 1,
+          "displayName": "${__field.labels.formula}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["formula"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH days AS (\n  SELECT DISTINCT trad_dt\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\nsel AS (\n  SELECT formula_id, lpad(formula_id::VARCHAR, 3, '0') || ' ' || arg_max(formula_name, trad_dt) AS formula\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE formula_family IN ($family)\n    AND formula_id IN (SELECT TRY_CAST(split_part(f, ' ', 1) AS BIGINT) FROM unnest([$formula]) AS u(f))\n  GROUP BY formula_id\n),\nf AS (\n  SELECT trad_dt, formula_id\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT days.trad_dt::TIMESTAMP AS time, sel.formula, (f.formula_id IS NOT NULL)::INTEGER AS published\nFROM days\nCROSS JOIN sel\nLEFT JOIN f ON f.trad_dt = days.trad_dt AND f.formula_id = sel.formula_id\nORDER BY time, formula"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Consecutive days published",
+      "description": "Unbroken run of daily files containing each selected formula, counted from the start of the stored history.",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "displayName": "${__field.labels.formula}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["formula"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH f AS (\n  SELECT trad_dt, formula_id\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\ndays AS (\n  SELECT trad_dt, row_number() OVER (ORDER BY trad_dt) AS day_no\n  FROM (SELECT DISTINCT trad_dt FROM f)\n),\nsel AS (\n  SELECT formula_id, lpad(formula_id::VARCHAR, 3, '0') || ' ' || arg_max(formula_name, trad_dt) AS formula\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE formula_family IN ($family)\n    AND formula_id IN (SELECT TRY_CAST(split_part(f, ' ', 1) AS BIGINT) FROM unnest([$formula]) AS u(f))\n  GROUP BY formula_id\n),\nislands AS (\n  SELECT f.trad_dt, sel.formula, days.day_no - row_number() OVER (PARTITION BY f.formula_id ORDER BY f.trad_dt) AS island\n  FROM f\n  JOIN sel USING (formula_id)\n  JOIN days USING (trad_dt)\n),\nstreaks AS (\n  SELECT trad_dt, formula, row_number() OVER (PARTITION BY formula, island ORDER BY trad_dt) AS streak\n  FROM islands\n)\nSELECT trad_dt::TIMESTAMP AS time, formula, streak\nFROM streaks\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time, formula"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Day-over-day presence change",
+      "description": "+1 when a selected formula reappears and -1 when it drops out, vs the previous daily file.",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": -1,
+          "max": 1,
+          "displayName": "${__field.labels.formula}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["formula"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH f AS (\n  SELECT trad_dt, formula_id\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\ndays AS (\n  SELECT DISTINCT trad_dt FROM f\n),\nsel AS (\n  SELECT formula_id, lpad(formula_id::VARCHAR, 3, '0') || ' ' || arg_max(formula_name, trad_dt) AS formula\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE formula_family IN ($family)\n    AND formula_id IN (SELECT TRY_CAST(split_part(f, ' ', 1) AS BIGINT) FROM unnest([$formula]) AS u(f))\n  GROUP BY formula_id\n),\ngrid AS (\n  SELECT days.trad_dt, sel.formula, (f.formula_id IS NOT NULL)::INTEGER AS published\n  FROM days\n  CROSS JOIN sel\n  LEFT JOIN f ON f.trad_dt = days.trad_dt AND f.formula_id = sel.formula_id\n),\nchanges AS (\n  SELECT trad_dt, formula, published - lag(published) OVER (PARTITION BY formula ORDER BY trad_dt) AS change\n  FROM grid\n)\nSELECT trad_dt::TIMESTAMP AS time, formula, change\nFROM changes\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND change IS NOT NULL\nORDER BY time, formula"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Formulas per family, stacked",
+      "description": "Daily formula count per selected family, stacked so the top edge is the total; ignores the formula filter.",
+      "gridPos": { "x": 0, "y": 21, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "displayName": "${__field.labels.formula_family}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["formula_family"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, formula_family, count(*)::BIGINT AS formulas\nFROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\nWHERE formula_family IN ($family)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, formula_family"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Net change in formulas per family",
+      "description": "Formula count per selected family vs the previous daily file; ignores the formula filter.",
+      "gridPos": { "x": 12, "y": 21, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "displayName": "${__field.labels.formula_family}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["formula_family"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH raw AS (\n  SELECT trad_dt, formula_family\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\ndays AS (\n  SELECT DISTINCT trad_dt FROM raw\n),\nfams AS (\n  SELECT DISTINCT formula_family FROM raw WHERE formula_family IN ($family)\n),\ncounts AS (\n  SELECT trad_dt, formula_family, count(*) AS n\n  FROM raw\n  WHERE formula_family IN ($family)\n  GROUP BY ALL\n),\ngrid AS (\n  SELECT days.trad_dt, fams.formula_family, coalesce(counts.n, 0) AS n\n  FROM days\n  CROSS JOIN fams\n  LEFT JOIN counts ON counts.trad_dt = days.trad_dt AND counts.formula_family = fams.formula_family\n),\nchanges AS (\n  SELECT trad_dt, formula_family, n - lag(n) OVER (PARTITION BY formula_family ORDER BY trad_dt) AS change\n  FROM grid\n)\nSELECT trad_dt::TIMESTAMP AS time, formula_family, change::BIGINT AS change\nFROM changes\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND change IS NOT NULL\nORDER BY time, formula_family"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Selected formulas (latest day in range)",
+      "description": "Latest name, first and last appearance, days published and name variants for the selected formulas.",
+      "gridPos": { "x": 0, "y": 30, "w": 24, "h": 9 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "formula_id" }, "properties": [{ "id": "custom.width", "value": 110 }] },
+          { "matcher": { "id": "byName", "options": "formula_family" }, "properties": [{ "id": "custom.width", "value": 150 }] },
+          { "matcher": { "id": "byName", "options": "coverage" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 1 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE formula_family IN ($family)\n    AND formula_id IN (SELECT TRY_CAST(split_part(f, ' ', 1) AS BIGINT) FROM unnest([$formula]) AS u(f))\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\ndays AS (\n  SELECT count(DISTINCT trad_dt) AS n, max(trad_dt) AS latest\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\nhist AS (\n  SELECT formula_id, min(trad_dt) AS first_seen\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  GROUP BY formula_id\n)\nSELECT\n  d.formula_id,\n  arg_max(d.formula_family, d.trad_dt) AS formula_family,\n  arg_max(d.formula_name, d.trad_dt) AS formula_name,\n  any_value(hist.first_seen) AS first_seen,\n  max(d.trad_dt) AS last_seen,\n  max(d.trad_dt) = any_value(days.latest) AS on_latest_day,\n  count(DISTINCT d.trad_dt) AS days_published,\n  count(DISTINCT d.trad_dt) / any_value(days.n) AS coverage,\n  count(DISTINCT d.formula_name) AS names_in_range\nFROM d\nJOIN hist USING (formula_id)\nCROSS JOIN days\nGROUP BY d.formula_id\nORDER BY d.formula_id"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Least consistently published (range)",
+      "description": "15 formulas with the most missing days or name variants in the selected families; ignores the formula filter.",
+      "gridPos": { "x": 0, "y": 39, "w": 14, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "formula_id" }, "properties": [{ "id": "custom.width", "value": 110 }] },
+          { "matcher": { "id": "byName", "options": "coverage" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 1 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE formula_family IN ($family)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\ndays AS (\n  SELECT count(DISTINCT trad_dt) AS n\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  formula_id,\n  arg_max(formula_family, trad_dt) AS formula_family,\n  arg_max(formula_name, trad_dt) AS formula_name,\n  count(DISTINCT trad_dt) AS days_published,\n  any_value(days.n) - count(DISTINCT trad_dt) AS missing_days,\n  count(DISTINCT trad_dt) / any_value(days.n) AS coverage,\n  count(DISTINCT formula_name) AS names_in_range\nFROM d\nCROSS JOIN days\nGROUP BY formula_id\nORDER BY coverage ASC, names_in_range DESC, formula_id\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 8,
       "type": "bargauge",
-      "title": "Formulas per family (latest day in range)",
-      "description": "Risk formulas per family on the latest day (family is derived from the id).",
-      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 9 },
+      "title": "Formulas per family (latest day, all families)",
+      "description": "Formula count per family in the latest file in the range; ignores both filters.",
+      "gridPos": { "x": 14, "y": 39, "w": 10, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": { "unit": "short", "decimals": 0, "min": 0 },
@@ -65,48 +392,16 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($family) OR formula_family IN ($family))\n)\nSELECT formula_family, count(*)::BIGINT AS formulas\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nGROUP BY ALL\nORDER BY min(formula_id)"
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT formula_family, count(*)::BIGINT AS formulas\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nGROUP BY ALL\nORDER BY formulas DESC, min(formula_id)"
         }
       ]
     },
     {
-      "id": 2,
-      "type": "timeseries",
-      "title": "Published formulas per day by family",
-      "description": "Risk formulas per day, stacked by family.",
-      "gridPos": { "x": 8, "y": 0, "w": 16, "h": 9 },
-      "interval": "1d",
-      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "decimals": 0,
-          "displayName": "${__field.labels.formula_family}",
-          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
-        },
-        "overrides": []
-      },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "transformations": [
-        { "id": "partitionByValues", "options": { "fields": ["formula_family"], "keepFields": false, "naming": { "asLabels": true } } }
-      ],
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-          "editorMode": "code",
-          "rawQuery": true,
-          "format": 1,
-          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, formula_family, count(*)::BIGINT AS formulas\nFROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND ('__all' IN ($family) OR formula_family IN ($family))\nGROUP BY ALL\nORDER BY time, formula_family"
-        }
-      ]
-    },
-    {
-      "id": 3,
+      "id": 6,
       "type": "table",
-      "title": "Formula changes vs previous published day (added / removed / renamed)",
-      "description": "Formulas added, removed or renamed vs the previous day.",
-      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 9 },
+      "title": "Formula changes vs previous file (added / removed / renamed)",
+      "description": "Formulas in the selected families added, removed or renamed vs the previous daily file; ignores the formula filter.",
+      "gridPos": { "x": 0, "y": 51, "w": 24, "h": 9 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "options": { "showHeader": true },
@@ -117,16 +412,16 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($family) OR formula_family IN ($family))\n),\ndays AS (\n  SELECT trad_dt, lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt\n  FROM (SELECT DISTINCT trad_dt FROM d)\n),\ncur AS (\n  SELECT d.*\n  FROM d\n  JOIN days USING (trad_dt)\n  WHERE days.prev_dt IS NOT NULL\n),\nprv AS (\n  SELECT days.trad_dt, d.formula_id, d.formula_name, d.formula_family\n  FROM days\n  JOIN d ON d.trad_dt = days.prev_dt\n)\nSELECT coalesce(c.trad_dt, p.trad_dt) AS trad_dt,\n  CASE\n    WHEN p.formula_id IS NULL THEN 'added'\n    WHEN c.formula_id IS NULL THEN 'removed'\n    ELSE 'renamed'\n  END AS change,\n  coalesce(c.formula_id, p.formula_id) AS formula_id,\n  coalesce(c.formula_family, p.formula_family) AS formula_family,\n  p.formula_name AS prev_formula_name,\n  c.formula_name AS formula_name\nFROM cur c\nFULL JOIN prv p\n  ON c.trad_dt = p.trad_dt\n  AND c.formula_id = p.formula_id\nWHERE p.formula_id IS NULL\n  OR c.formula_id IS NULL\n  OR c.formula_name <> p.formula_name\nORDER BY trad_dt DESC, formula_id\nLIMIT 500"
+          "rawSql": "WITH raw AS (\n  SELECT trad_dt, formula_id, formula_name, formula_family\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\ndays AS (\n  SELECT trad_dt, lag(trad_dt) OVER (ORDER BY trad_dt) AS prev_dt\n  FROM (SELECT DISTINCT trad_dt FROM raw)\n),\nd AS (\n  SELECT *\n  FROM raw\n  WHERE formula_family IN ($family)\n),\ncur AS (\n  SELECT d.*\n  FROM d\n  JOIN days USING (trad_dt)\n  WHERE days.prev_dt IS NOT NULL\n),\nprv AS (\n  SELECT days.trad_dt, d.formula_id, d.formula_name, d.formula_family\n  FROM days\n  JOIN d ON d.trad_dt = days.prev_dt\n)\nSELECT coalesce(c.trad_dt, p.trad_dt) AS trad_dt,\n  CASE\n    WHEN p.formula_id IS NULL THEN 'added'\n    WHEN c.formula_id IS NULL THEN 'removed'\n    ELSE 'renamed'\n  END AS change,\n  coalesce(c.formula_id, p.formula_id) AS formula_id,\n  coalesce(c.formula_family, p.formula_family) AS formula_family,\n  p.formula_name AS prev_formula_name,\n  c.formula_name AS formula_name\nFROM cur c\nFULL JOIN prv p\n  ON c.trad_dt = p.trad_dt\n  AND c.formula_id = p.formula_id\nWHERE (p.formula_id IS NULL OR c.formula_id IS NULL OR c.formula_name <> p.formula_name)\n  AND $__timeFilter(coalesce(c.trad_dt, p.trad_dt)::TIMESTAMP)\nORDER BY trad_dt DESC, formula_id\nLIMIT 500"
         }
       ]
     },
     {
-      "id": 4,
+      "id": 9,
       "type": "table",
       "title": "Risk formula catalog (latest day in range)",
-      "description": "All risk formulas on the latest day.",
-      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 20 },
+      "description": "All formulas of the selected families in the latest file; ignores the formula filter.",
+      "gridPos": { "x": 0, "y": 60, "w": 24, "h": 16 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {},
@@ -143,7 +438,55 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($family) OR formula_family IN ($family))\n),\nhist AS (\n  SELECT formula_id, min(trad_dt) AS first_seen\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  GROUP BY formula_id\n)\nSELECT d.formula_id,\n  d.formula_family,\n  d.formula_name,\n  hist.first_seen\nFROM d\nJOIN hist USING (formula_id)\nWHERE d.trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY d.formula_id"
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE formula_family IN ($family)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\nhist AS (\n  SELECT formula_id, min(trad_dt) AS first_seen\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  GROUP BY formula_id\n)\nSELECT d.formula_id,\n  d.formula_family,\n  d.formula_name,\n  hist.first_seen\nFROM d\nJOIN hist USING (formula_id)\nWHERE d.trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY d.formula_id"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Name history per formula",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 76, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 21,
+          "type": "state-timeline",
+          "title": "$formula",
+          "description": "Published name per day, with days missing from the file marked as not published, one panel per selected formula.",
+          "gridPos": { "x": 0, "y": 77, "w": 24, "h": 4 },
+          "repeat": "formula",
+          "repeatDirection": "v",
+          "interval": "1d",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "mappings": [
+                { "type": "value", "options": { "(not published)": { "color": "red", "index": 0 } } }
+              ],
+              "custom": { "fillOpacity": 70, "lineWidth": 0 }
+            },
+            "overrides": []
+          },
+          "options": {
+            "mergeValues": true,
+            "showValue": "auto",
+            "alignValue": "left",
+            "rowHeight": 0.9,
+            "legend": { "showLegend": false },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "WITH days AS (\n  SELECT DISTINCT trad_dt\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\nf AS (\n  SELECT trad_dt, formula_name\n  FROM read_parquet('s3://uploads/b3_risk_formulas/daily_parse/*.parquet')\n  WHERE formula_id = TRY_CAST(split_part($formula, ' ', 1) AS BIGINT)\n    AND formula_family IN ($family)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT days.trad_dt::TIMESTAMP AS time, coalesce(f.formula_name, '(not published)') AS name\nFROM days\nLEFT JOIN f USING (trad_dt)\nORDER BY time"
+            }
+          ]
         }
       ]
     }
