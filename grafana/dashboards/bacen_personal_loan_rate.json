@@ -1,0 +1,306 @@
+{
+  "uid": "bacen-personal-loan-rate",
+  "title": "BACEN - Personal loan rate, non-payroll (individuals)",
+  "tags": ["bacen"],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": { "from": "now-5y/M", "to": "now/d" },
+  "timepicker": {
+    "refresh_intervals": [],
+    "quick_ranges": [
+      { "display": "Last 6 months", "from": "now-6M/M", "to": "now/d" },
+      { "display": "Last 1 year", "from": "now-1y/M", "to": "now/d" },
+      { "display": "Last 2 years", "from": "now-2y/M", "to": "now/d" },
+      { "display": "Last 3 years", "from": "now-3y/M", "to": "now/d" },
+      { "display": "Last 5 years", "from": "now-5y/M", "to": "now/d" },
+      { "display": "Last 10 years", "from": "now-10y/M", "to": "now/d" },
+      { "display": "Year to date", "from": "now/y", "to": "now/d" },
+      { "display": "Previous year", "from": "now-1y/y", "to": "now-1y/y" }
+    ]
+  },
+  "refresh": "",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Latest reference month",
+      "description": "Most recent reference month with a published rate in the range. SGS 25464 is published with a lag of one to two months.",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT strftime(max(ref_dt), '%Y-%m') AS month\nFROM read_parquet('s3://uploads/bacen_personal_loan_rate/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Latest monthly rate",
+      "description": "Average monthly interest rate on non-payroll personal loans to individuals (free resources) in the latest month in range (SGS 25464, % per month).",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "suffix:% a.m.", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT arg_max(value, ref_dt)::DOUBLE AS rate\nFROM read_parquet('s3://uploads/bacen_personal_loan_rate/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Annualized equivalent",
+      "description": "Latest monthly rate compounded over 12 months: ((1 + rate)^12 - 1), % per year.",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "suffix:% a.a.", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT arg_max(annualized_value, ref_dt)::DOUBLE AS annualized\nFROM read_parquet('s3://uploads/bacen_personal_loan_rate/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Change vs previous month",
+      "description": "Latest monthly rate minus the previous month's rate, in percentage points. Looks back before the range start when needed.",
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "suffix: p.p.", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value\n  FROM read_parquet('s3://uploads/bacen_personal_loan_rate/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nl AS (\n  SELECT max(ref_dt) AS last_dt\n  FROM d\n  WHERE $__timeFilter(ref_dt::TIMESTAMP)\n)\nSELECT (c.value - p.value)::DOUBLE AS change_pp\nFROM l\nJOIN d c ON c.ref_dt = l.last_dt\nJOIN d p ON p.ref_dt = (l.last_dt - INTERVAL 1 MONTH)::DATE"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Change vs 12 months earlier",
+      "description": "Latest monthly rate minus the rate of the same month one year earlier, in percentage points. Looks back before the range start when needed.",
+      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "suffix: p.p.", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value\n  FROM read_parquet('s3://uploads/bacen_personal_loan_rate/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nl AS (\n  SELECT max(ref_dt) AS last_dt\n  FROM d\n  WHERE $__timeFilter(ref_dt::TIMESTAMP)\n)\nSELECT (c.value - p.value)::DOUBLE AS change_12m_pp\nFROM l\nJOIN d c ON c.ref_dt = l.last_dt\nJOIN d p ON p.ref_dt = (l.last_dt - INTERVAL 12 MONTH)::DATE"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Range min / max",
+      "description": "Lowest and highest monthly rate in the range (% per month).",
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "suffix:% a.m.", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value_and_name", "orientation": "horizontal" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  min(value)::DOUBLE AS \"Min\",\n  max(value)::DOUBLE AS \"Max\"\nFROM read_parquet('s3://uploads/bacen_personal_loan_rate/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Monthly rate and annualized equivalent",
+      "description": "Average monthly rate on non-payroll personal loans (% per month, left axis) and its 12-month compounded equivalent (% per year, right axis), by reference month.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:% a.m.",
+          "decimals": 2,
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Annualized" },
+            "properties": [
+              { "id": "unit", "value": "suffix:% a.a." },
+              { "id": "custom.axisPlacement", "value": "right" },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "mean", "min", "max"] },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  ref_dt::TIMESTAMP AS time,\n  value::DOUBLE AS \"Monthly rate\",\n  annualized_value::DOUBLE AS \"Annualized\"\nFROM read_parquet('s3://uploads/bacen_personal_loan_rate/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Month-over-month change",
+      "description": "Monthly rate minus the previous month's rate, in percentage points; red bars are increases, green bars decreases.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: p.p.",
+          "decimals": 2,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0 }] },
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "gradientMode": "scheme", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "mean", "min", "max"] },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value\n  FROM read_parquet('s3://uploads/bacen_personal_loan_rate/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 1 MONTH\n    AND ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n)\nSELECT\n  c.ref_dt::TIMESTAMP AS time,\n  (c.value - p.value)::DOUBLE AS \"Change vs previous month\"\nFROM d c\nJOIN d p ON p.ref_dt = (c.ref_dt - INTERVAL 1 MONTH)::DATE\nWHERE $__timeFilter(c.ref_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Change vs 12 months earlier",
+      "description": "Monthly rate minus the rate of the same month one year earlier, in percentage points.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: p.p.",
+          "decimals": 2,
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 20, "thresholdsStyle": { "mode": "off" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min", "max"] },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value\n  FROM read_parquet('s3://uploads/bacen_personal_loan_rate/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 12 MONTH\n    AND ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n)\nSELECT\n  c.ref_dt::TIMESTAMP AS time,\n  (c.value - p.value)::DOUBLE AS \"Change vs 12 months earlier\"\nFROM d c\nJOIN d p ON p.ref_dt = (c.ref_dt - INTERVAL 12 MONTH)::DATE\nWHERE $__timeFilter(c.ref_dt::TIMESTAMP)\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Yearly summary",
+      "description": "Per calendar year, over the months in range: average monthly rate, average annualized equivalent, and the lowest and highest monthly rate.",
+      "gridPos": { "x": 0, "y": 23, "w": 10, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "suffix:% a.m.", "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "year" }, "properties": [{ "id": "unit", "value": "string" }] },
+          { "matcher": { "id": "byName", "options": "months" }, "properties": [{ "id": "unit", "value": "none" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "avg_annualized" }, "properties": [{ "id": "unit", "value": "suffix:% a.a." }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  year(ref_dt)::VARCHAR AS year,\n  count(*) AS months,\n  avg(value)::DOUBLE AS avg_monthly,\n  avg(annualized_value)::DOUBLE AS avg_annualized,\n  min(value)::DOUBLE AS min_monthly,\n  max(value)::DOUBLE AS max_monthly\nFROM read_parquet('s3://uploads/bacen_personal_loan_rate/monthly_parse/*.parquet')\nWHERE $__timeFilter(ref_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY year DESC"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "Monthly detail",
+      "description": "Every reference month in range: monthly rate, annualized equivalent, changes vs the previous month and vs 12 months earlier (percentage points), and the SGS blocked flag.",
+      "gridPos": { "x": 10, "y": 23, "w": 14, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "suffix:% a.m.", "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "month" }, "properties": [{ "id": "unit", "value": "string" }] },
+          { "matcher": { "id": "byName", "options": "annualized" }, "properties": [{ "id": "unit", "value": "suffix:% a.a." }] },
+          { "matcher": { "id": "byRegexp", "options": "_pp$" }, "properties": [{ "id": "unit", "value": "suffix: p.p." }] },
+          { "matcher": { "id": "byName", "options": "blocked" }, "properties": [{ "id": "unit", "value": "bool_yes_no" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT ref_dt, value, annualized_value, blocked\n  FROM read_parquet('s3://uploads/bacen_personal_loan_rate/monthly_parse/*.parquet')\n  WHERE ref_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 12 MONTH\n    AND ref_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n)\nSELECT\n  strftime(c.ref_dt, '%Y-%m') AS month,\n  c.value::DOUBLE AS rate,\n  c.annualized_value::DOUBLE AS annualized,\n  (c.value - m.value)::DOUBLE AS change_1m_pp,\n  (c.value - y.value)::DOUBLE AS change_12m_pp,\n  c.blocked\nFROM d c\nLEFT JOIN d m ON m.ref_dt = (c.ref_dt - INTERVAL 1 MONTH)::DATE\nLEFT JOIN d y ON y.ref_dt = (c.ref_dt - INTERVAL 12 MONTH)::DATE\nWHERE $__timeFilter(c.ref_dt::TIMESTAMP)\nORDER BY c.ref_dt DESC"
+        }
+      ]
+    }
+  ]
+}
