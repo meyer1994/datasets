@@ -25,11 +25,28 @@
   "templating": {
     "list": [
       {
+        "name": "tpmerc",
+        "label": "Market type",
+        "type": "custom",
+        "query": "Cash (010) : 010, Odd lot (020) : 020, Call exercise (012) : 012, Put exercise (013) : 013, Auction (017) : 017, Forward (030) : 030, Futures with gain retention (050) : 050, Futures with movement (060) : 060, Call options (070) : 070, Put options (080) : 080",
+        "current": { "text": ["Cash (010)"], "value": ["010"] },
+        "multi": true,
+        "includeAll": false
+      },
+      {
         "name": "ticker",
         "label": "Ticker",
-        "type": "custom",
-        "query": "PETR4,VALE3,ITUB4,BBDC4,BBAS3,ABEV3,WEGE3,BOVA11",
-        "current": { "text": ["PETR4"], "value": ["PETR4"] },
+        "type": "query",
+        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+        "query": "SELECT codneg\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nORDER BY sum(voltot) DESC\nLIMIT 1000",
+        "definition": "SELECT codneg\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nORDER BY sum(voltot) DESC\nLIMIT 1000",
+        "refresh": 2,
+        "sort": 0,
+        "current": {
+          "selected": true,
+          "text": ["PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "ABEV3", "WEGE3", "B3SA3"],
+          "value": ["PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "ABEV3", "WEGE3", "B3SA3"]
+        },
         "multi": true,
         "includeAll": false,
         "allowCustomValue": true
@@ -53,7 +70,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT sum(voltot) AS volume\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND $__timeFilter(dtpreg::TIMESTAMP)"
+          "rawSql": "SELECT sum(voltot) AS volume\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)"
         }
       ]
     },
@@ -73,7 +90,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT sum(totneg)::BIGINT AS trades\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND $__timeFilter(dtpreg::TIMESTAMP)"
+          "rawSql": "SELECT sum(totneg)::BIGINT AS trades\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)"
         }
       ]
     },
@@ -93,7 +110,7 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT count(DISTINCT codneg) AS instruments\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND $__timeFilter(dtpreg::TIMESTAMP)"
+          "rawSql": "SELECT count(DISTINCT codneg) AS instruments\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)"
         }
       ]
     },
@@ -113,34 +130,33 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT count(DISTINCT dtpreg) AS days\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND $__timeFilter(dtpreg::TIMESTAMP)"
+          "rawSql": "SELECT count(DISTINCT dtpreg) AS days\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)"
         }
       ]
     },
     {
-      "id": 5,
-      "type": "candlestick",
-      "title": "$ticker daily candles (cash market)",
-      "description": "Daily cash-market candles with BRL volume, one panel per selected ticker (prices not adjusted).",
+      "id": 10,
+      "type": "timeseries",
+      "title": "Close price",
+      "description": "Daily closing price per selected ticker (BRL, not adjusted).",
       "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
-      "repeat": "ticker",
-      "repeatDirection": "h",
-      "maxPerRow": 2,
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
-        "defaults": { "unit": "currencyBRL" },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "volume" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] }
-        ]
+        "defaults": {
+          "unit": "currencyBRL",
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
       },
       "options": {
-        "mode": "candles+volume",
-        "candleStyle": "candles",
-        "colorStrategy": "open-close",
-        "includeAllFields": false,
-        "legend": { "showLegend": false }
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
       },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
       "targets": [
         {
           "refId": "A",
@@ -148,7 +164,214 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT\n  dtpreg::TIMESTAMP AS time,\n  preabe AS open,\n  premax AS high,\n  premin AS low,\n  preult AS close,\n  voltot AS volume\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg = $ticker\n  AND tpmerc = '010'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nORDER BY time"
+          "rawSql": "SELECT dtpreg::TIMESTAMP AS time, codneg AS ticker, arg_max(preult, voltot) AS close\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Return since start of range",
+      "description": "Close relative to each ticker's first close in the range, to compare tickers on one scale.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH daily AS (\n  SELECT dtpreg::TIMESTAMP AS time, codneg AS ticker, arg_max(preult, voltot) AS close\n  FROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\n  WHERE codneg IN ($ticker)\n    AND tpmerc IN ($tpmerc)\n    AND $__timeFilter(dtpreg::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT time, ticker, close / first_value(close) OVER (PARTITION BY ticker ORDER BY time) - 1 AS return\nFROM daily\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Daily change",
+      "description": "Close vs the previous trading day's close, per selected ticker.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH daily AS (\n  SELECT dtpreg::TIMESTAMP AS time, codneg AS ticker, arg_max(preult, voltot) AS close\n  FROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\n  WHERE codneg IN ($ticker)\n    AND tpmerc IN ($tpmerc)\n    AND dtpreg::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND dtpreg::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  GROUP BY ALL\n),\nchanges AS (\n  SELECT time, ticker, close / lag(close) OVER (PARTITION BY ticker ORDER BY time) - 1 AS change\n  FROM daily\n)\nSELECT time, ticker, change\nFROM changes\nWHERE $__timeFilter(time)\n  AND change IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Daily volume per ticker",
+      "description": "Daily traded BRL volume per selected ticker.",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyBRL",
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT dtpreg::TIMESTAMP AS time, codneg AS ticker, sum(voltot) AS volume\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Daily trades per ticker",
+      "description": "Daily number of trades per selected ticker.",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT dtpreg::TIMESTAMP AS time, codneg AS ticker, sum(totneg)::BIGINT AS trades\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Daily quantity traded per ticker",
+      "description": "Daily number of shares or contracts traded per selected ticker.",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT dtpreg::TIMESTAMP AS time, codneg AS ticker, sum(quatot)::BIGINT AS quantity\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Daily range (high vs low)",
+      "description": "Daily high over low minus 1 per selected ticker, a simple intraday volatility measure.",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT dtpreg::TIMESTAMP AS time, codneg AS ticker, max(premax) / nullif(min(premin), 0) - 1 AS range\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, ticker"
         }
       ]
     },
@@ -156,18 +379,21 @@
       "id": 6,
       "type": "timeseries",
       "title": "Daily volume by market",
-      "description": "Daily BRL volume of the selected tickers, stacked by market type.",
-      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 9 },
+      "description": "Daily BRL volume of the selected tickers per market type; ignores the market type filter.",
+      "gridPos": { "x": 0, "y": 41, "w": 24, "h": 8 },
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {
           "unit": "currencyBRL",
-          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
         },
         "overrides": []
       },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
       "targets": [
         {
           "refId": "A",
@@ -182,9 +408,9 @@
     {
       "id": 7,
       "type": "table",
-      "title": "Top 20 by volume (cash market, range)",
-      "description": "Top 20 cash-market tickers by BRL volume in the range; ignores the ticker filter.",
-      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 12 },
+      "title": "Top 20 by volume (range)",
+      "description": "Top 20 tickers by BRL volume in the selected market types; ignores the ticker filter.",
+      "gridPos": { "x": 0, "y": 49, "w": 12, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {},
@@ -203,16 +429,16 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT\n  codneg AS ticker,\n  any_value(nomres) AS name,\n  any_value(especi) AS spec,\n  sum(totneg)::BIGINT AS trades,\n  sum(voltot) AS volume,\n  arg_min(preult, dtpreg) AS first_close,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE tpmerc = '010'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nORDER BY volume DESC\nLIMIT 20"
+          "rawSql": "SELECT\n  codneg AS ticker,\n  any_value(nomres) AS name,\n  any_value(especi) AS spec,\n  sum(totneg)::BIGINT AS trades,\n  sum(voltot) AS volume,\n  arg_min(preult, dtpreg) AS first_close,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nORDER BY volume DESC\nLIMIT 20"
         }
       ]
     },
     {
       "id": 8,
       "type": "table",
-      "title": "Top gainers (standard lot, avg R$ 1M/day)",
-      "description": "Top 15 period returns among liquid standard-lot stocks (avg BRL 1M/day); ignores the ticker filter.",
-      "gridPos": { "x": 12, "y": 23, "w": 6, "h": 12 },
+      "title": "Top gainers (avg R$ 1M/day)",
+      "description": "Top 15 period returns among tickers averaging BRL 1M/day in the selected market types; ignores the ticker filter.",
+      "gridPos": { "x": 12, "y": 49, "w": 6, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {},
@@ -229,16 +455,16 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT\n  codneg AS ticker,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE tpmerc = '010'\n  AND codbdi = '02'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nHAVING avg(voltot) >= 1000000\nORDER BY period_return DESC\nLIMIT 15"
+          "rawSql": "SELECT\n  codneg AS ticker,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nHAVING avg(voltot) >= 1000000\nORDER BY period_return DESC\nLIMIT 15"
         }
       ]
     },
     {
       "id": 9,
       "type": "table",
-      "title": "Top losers (standard lot, avg R$ 1M/day)",
-      "description": "Bottom 15 period returns among liquid standard-lot stocks (avg BRL 1M/day); ignores the ticker filter.",
-      "gridPos": { "x": 18, "y": 23, "w": 6, "h": 12 },
+      "title": "Top losers (avg R$ 1M/day)",
+      "description": "Bottom 15 period returns among tickers averaging BRL 1M/day in the selected market types; ignores the ticker filter.",
+      "gridPos": { "x": 18, "y": 49, "w": 6, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {},
@@ -255,7 +481,119 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT\n  codneg AS ticker,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE tpmerc = '010'\n  AND codbdi = '02'\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nHAVING avg(voltot) >= 1000000\nORDER BY period_return ASC\nLIMIT 15"
+          "rawSql": "SELECT\n  codneg AS ticker,\n  arg_max(preult, dtpreg) AS last_close,\n  arg_max(preult, dtpreg) / arg_min(preult, dtpreg) - 1 AS period_return\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY codneg\nHAVING avg(voltot) >= 1000000\nORDER BY period_return ASC\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Total volume (BRL), stacked by ticker",
+      "description": "Daily BRL volume of the selected tickers, stacked so the top edge is the total.",
+      "gridPos": { "x": 0, "y": 61, "w": 12, "h": 10 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyBRL",
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT dtpreg::TIMESTAMP AS time, codneg AS ticker, sum(voltot) AS volume\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Total trades, stacked by ticker",
+      "description": "Daily number of trades of the selected tickers, stacked so the top edge is the total.",
+      "gridPos": { "x": 12, "y": 61, "w": 12, "h": 10 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT dtpreg::TIMESTAMP AS time, codneg AS ticker, sum(totneg)::BIGINT AS trades\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg IN ($ticker)\n  AND tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Candles per ticker",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 71, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 5,
+          "type": "candlestick",
+          "title": "$ticker daily candles",
+          "description": "Daily candles with BRL volume, one panel per selected ticker (prices not adjusted).",
+          "gridPos": { "x": 0, "y": 72, "w": 24, "h": 10 },
+          "repeat": "ticker",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "interval": "1d",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": { "unit": "currencyBRL" },
+            "overrides": [
+              { "matcher": { "id": "byName", "options": "volume" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] }
+            ]
+          },
+          "options": {
+            "mode": "candles+volume",
+            "candleStyle": "candles",
+            "colorStrategy": "open-close",
+            "includeAllFields": false,
+            "legend": { "showLegend": false }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "SELECT\n  dtpreg::TIMESTAMP AS time,\n  preabe AS open,\n  premax AS high,\n  premin AS low,\n  preult AS close,\n  voltot AS volume\nFROM read_parquet('s3://uploads/b3_history/daily_parse/*.parquet')\nWHERE codneg = $ticker\n  AND tpmerc IN ($tpmerc)\n  AND $__timeFilter(dtpreg::TIMESTAMP)\nORDER BY time"
+            }
+          ]
         }
       ]
     }
