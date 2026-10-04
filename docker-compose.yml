@@ -1,12 +1,11 @@
 services:
   postgres:
     image: postgres:17-alpine
+    env_file: .env
     environment:
-      POSTGRES_USER: ${DAGSTER_PG_USERNAME:-dagster}
-      POSTGRES_PASSWORD: ${DAGSTER_PG_PASSWORD:-dagster}
-      POSTGRES_DB: ${DAGSTER_PG_DB:-dagster}
-    ports:
-      - 5432:5432
+      POSTGRES_USER: ${DAGSTER_PG_USERNAME}
+      POSTGRES_PASSWORD: ${DAGSTER_PG_PASSWORD}
+      POSTGRES_DB: ${DAGSTER_PG_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,12 +16,10 @@ services:
 
   minio:
     image: minio/minio:latest
-    ports:
-      - 9000:9000
-      - 9001:9001
+    env_file: .env
     environment:
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY}
     entrypoint:
       - '/bin/sh'
       - '-c'
@@ -37,17 +34,12 @@ services:
     image: ndagster-dagster
     command: dagster code-server start -h 0.0.0.0 -p 4000 -m ndagster.definitions --location-name ndagster
     env_file: .env
-    environment:
-      DAGSTER_PG_HOST: postgres
-      AWS_ENDPOINT_URL: http://minio:9000
     volumes:
       - dagster_storage:/opt/dagster/dagster_home/storage
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_started
+      - postgres
+      - minio
 
   dagster-webserver:
     build:
@@ -56,19 +48,14 @@ services:
     image: ndagster-dagster
     command: dagster-webserver -h 0.0.0.0 -p 3000 -w /opt/dagster/dagster_home/workspace.yaml
     env_file: .env
-    environment:
-      DAGSTER_PG_HOST: postgres
-      AWS_ENDPOINT_URL: http://minio:9000
     ports:
       - 3000:3000
     volumes:
       - dagster_storage:/opt/dagster/dagster_home/storage
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
-      dagster-code:
-        condition: service_started
+      - postgres
+      - dagster-code
 
   dagster-daemon:
     build:
@@ -77,27 +64,26 @@ services:
     image: ndagster-dagster
     command: dagster-daemon run -w /opt/dagster/dagster_home/workspace.yaml
     env_file: .env
-    environment:
-      DAGSTER_PG_HOST: postgres
-      AWS_ENDPOINT_URL: http://minio:9000
     volumes:
       - dagster_storage:/opt/dagster/dagster_home/storage
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
-      dagster-code:
-        condition: service_started
+      - postgres
+      - dagster-code
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://dagster-webserver:3000 run
+    env_file: .env
+    restart: unless-stopped
 
   grafana:
     build:
       context: .
       dockerfile: Dockerfile.grafana
     env_file: .env
-    environment:
-      AWS_ENDPOINT_URL: http://minio:9000
     ports:
-      - 3001:3000
+      - 4000:3000
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro

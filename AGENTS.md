@@ -12,17 +12,22 @@ dashboards live in Grafana (DuckDB datasource).
 ```bash
 uv sync                                    # install (dagster==1.13.25, duckdb, polars, httpx2, s3fs)
 source .venv/bin/activate                  # activate env first
-dg dev                                     # Dagster UI at http://localhost:3000
-docker compose up -d                       # postgres:5432, minio:9000/9001, grafana:3001
+docker compose up -d --build              # full stack: dagster:3000, grafana:4000
 uv run ruff check .                        # lint (dev group; ruff>=0.16.10)
 uv run ruff format .                       # format
 ```
 
-- Dagster instance storage (runs, event logs, schedules) is Postgres via
- `dagster-postgres`, configured in the root `dagster.yaml` from `DAGSTER_PG_*`
- env vars in `.env`; `dg dev` picks up both from the project dir.
+- Dev and prod run the same `docker-compose.yml`; only `.env` differs (template:
+ `.env.example`). Every service loads it via `env_file`; hostnames in it are the
+ compose service names (`postgres`, `minio`). Only `dagster-webserver` (3000)
+ and `grafana` (4000 → 3000) publish ports; postgres/minio are internal. Prod
+ access goes through `cloudflared`.
+- Dagster runs as `dagster-code` (gRPC code server, executes runs),
+ `dagster-webserver` and `dagster-daemon`, all from `Dockerfile.dagster`.
+ Instance storage (runs, event logs, schedules) is Postgres via
+ `dagster-postgres`, configured in `dagster.yaml` from `DAGSTER_PG_*`.
 - Compose data persists in named volumes `postgres_data`, `minio_data`,
- `grafana_data` (`docker compose down -v` wipes them).
+ `grafana_data`, `dagster_storage` (`docker compose down -v` wipes them).
 - Grafana runs the MotherDuck DuckDB datasource plugin; provisioning creates the
   `minio` S3 secret (env `AWS_*` from `.env`) and auto-imports
   `grafana/dashboards/*.json` into the `B3` folder.
@@ -111,8 +116,10 @@ monthly series lag 1–3 months.
 ├── Dockerfile.grafana            # Grafana + MotherDuck DuckDB datasource plugin (Ubuntu image)
 ├── README.md
 ├── DATASETS.md                  # dataset coverage checklist (B3, BACEN)
-├── docker-compose.yml           # postgres, minio, grafana services
-├── .env                         # MinIO, Grafana + DAGSTER_PG_* credentials (gitignored)
+├── Dockerfile.dagster           # Dagster image (code server, webserver, daemon)
+├── docker-compose.yml           # postgres, minio, dagster-*, cloudflared, grafana
+├── docker/dagster/workspace.yaml # gRPC workspace → dagster-code:4000
+├── .env                         # all compose config (gitignored; see .env.example)
 ├── dagster.yaml                 # Dagster instance config (Postgres storage)
 ├── pyproject.toml               # deps + [tool.dg] config (root_module=ndagster)
 ├── grafana/

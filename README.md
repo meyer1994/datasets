@@ -44,30 +44,27 @@ pip install -e ".[dev]"
 
 ### Running Dagster
 
-Start the backing services (Postgres, MinIO, Grafana). Data is kept in the
-`postgres_data`, `minio_data` and `grafana_data` named volumes:
+The whole stack (Postgres, MinIO, Dagster code server / webserver / daemon,
+Grafana, Cloudflare tunnel) runs from `docker-compose.yml`, in dev and in prod.
+The only difference between environments is `.env`:
 
 ```bash
-docker compose up -d
+cp .env.example .env # then edit credentials and TUNNEL_TOKEN
+docker compose up -d --build
 ```
 
+Open http://localhost:3000 for Dagster and http://localhost:4000 for Grafana.
+Rebuild (`docker compose up -d --build`) after changing code. Data is kept in the
+`postgres_data`, `minio_data`, `grafana_data` and `dagster_storage` named volumes.
 Dagster stores runs, event logs and schedules in Postgres (see `dagster.yaml`).
-The connection is read from `.env`:
 
-```bash
-DAGSTER_PG_HOST=localhost
-DAGSTER_PG_USERNAME=dagster
-DAGSTER_PG_PASSWORD=dagster
-DAGSTER_PG_DB=dagster
-```
+To expose the Dockerized Dagster UI through a Cloudflare Tunnel, create a tunnel in
+the Cloudflare Zero Trust dashboard, add a public hostname pointing to
+`http://dagster-webserver:3000` and set `TUNNEL_TOKEN` in `.env`. The
+`cloudflared` service starts with the rest of the stack.
 
-Start the Dagster UI web server:
-
-```bash
-dg dev
-```
-
-Open http://localhost:3000 in your browser to see the project.
+The Dagster UI has no authentication, so protect the hostname with a Cloudflare
+Access policy.
 
 ## Learn more
 
