@@ -1,469 +1,621 @@
 {
   "uid": "b3-fee-variables",
   "title": "B3 - Fee Variables",
-  "tags": [
-    "b3"
-  ],
+  "tags": ["b3"],
   "timezone": "America/Sao_Paulo",
   "editable": true,
   "graphTooltip": 1,
   "schemaVersion": 39,
-  "time": {
-    "from": "now-1y/d",
-    "to": "now/d"
-  },
+  "time": { "from": "now-1y/d", "to": "now/d" },
   "timepicker": {
     "refresh_intervals": [],
     "quick_ranges": [
-      {
-        "display": "Today",
-        "from": "now/d",
-        "to": "now/d"
-      },
-      {
-        "display": "Last 7 days",
-        "from": "now-7d/d",
-        "to": "now/d"
-      },
-      {
-        "display": "Last 30 days",
-        "from": "now-30d/d",
-        "to": "now/d"
-      },
-      {
-        "display": "Last 90 days",
-        "from": "now-90d/d",
-        "to": "now/d"
-      },
-      {
-        "display": "Last 6 months",
-        "from": "now-6M/d",
-        "to": "now/d"
-      },
-      {
-        "display": "Last 1 year",
-        "from": "now-1y/d",
-        "to": "now/d"
-      },
-      {
-        "display": "Last 2 years",
-        "from": "now-2y/d",
-        "to": "now/d"
-      },
-      {
-        "display": "Month to date",
-        "from": "now/M",
-        "to": "now/d"
-      },
-      {
-        "display": "Year to date",
-        "from": "now/y",
-        "to": "now/d"
-      }
+      { "display": "Today", "from": "now/d", "to": "now/d" },
+      { "display": "Last 7 days", "from": "now-7d/d", "to": "now/d" },
+      { "display": "Last 30 days", "from": "now-30d/d", "to": "now/d" },
+      { "display": "Last 90 days", "from": "now-90d/d", "to": "now/d" },
+      { "display": "Last 6 months", "from": "now-6M/d", "to": "now/d" },
+      { "display": "Last 1 year", "from": "now-1y/d", "to": "now/d" },
+      { "display": "Last 2 years", "from": "now-2y/d", "to": "now/d" },
+      { "display": "Month to date", "from": "now/M", "to": "now/d" },
+      { "display": "Year to date", "from": "now/y", "to": "now/d" }
     ]
   },
   "refresh": "",
   "templating": {
     "list": [
       {
-        "name": "segment",
-        "label": "Segment",
-        "type": "query",
-        "datasource": {
-          "type": "motherduck-duckdb-datasource",
-          "uid": "duckdb-minio"
-        },
-        "query": "SELECT DISTINCT segment\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE $__timeFilter(valid_from::TIMESTAMP)\nORDER BY 1",
-        "definition": "SELECT DISTINCT segment\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE $__timeFilter(valid_from::TIMESTAMP)\nORDER BY 1",
-        "refresh": 2,
-        "multi": true,
-        "includeAll": true,
-        "allValue": "'__all'",
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
-        "sort": 1
-      },
-      {
         "name": "market",
         "label": "Market",
-        "type": "query",
-        "datasource": {
-          "type": "motherduck-duckdb-datasource",
-          "uid": "duckdb-minio"
-        },
-        "query": "SELECT DISTINCT market\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE ('__all' IN ($segment) OR segment IN ($segment))\n  AND $__timeFilter(valid_from::TIMESTAMP)\nORDER BY 1",
-        "definition": "SELECT DISTINCT market\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE ('__all' IN ($segment) OR segment IN ($segment))\n  AND $__timeFilter(valid_from::TIMESTAMP)\nORDER BY 1",
-        "refresh": 2,
+        "type": "custom",
+        "query": "Spot (1) : 1, Futures (2) : 2, Options on spot (3) : 3, Options on futures (4) : 4, Forward (5) : 5",
+        "current": { "text": ["Futures (2)"], "value": ["2"] },
         "multi": true,
-        "includeAll": true,
-        "allValue": "'__all'",
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
-        "sort": 1
+        "includeAll": false
       },
       {
         "name": "asset",
         "label": "Asset",
         "type": "query",
-        "datasource": {
-          "type": "motherduck-duckdb-datasource",
-          "uid": "duckdb-minio"
-        },
-        "query": "SELECT DISTINCT asset\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE ('__all' IN ($segment) OR segment IN ($segment))\n  AND ('__all' IN ($market) OR market IN ($market))\n  AND $__timeFilter(valid_from::TIMESTAMP)\nORDER BY 1",
-        "definition": "SELECT DISTINCT asset\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE ('__all' IN ($segment) OR segment IN ($segment))\n  AND ('__all' IN ($market) OR market IN ($market))\n  AND $__timeFilter(valid_from::TIMESTAMP)\nORDER BY 1",
+        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+        "query": "SELECT asset\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE market IN ($market)\n  AND $__timeFilter(valid_from::TIMESTAMP)\nGROUP BY asset\nORDER BY max(CASE WHEN settlement_fee_ccy = 'BRL' THEN settlement_fee::DOUBLE ELSE settlement_fee::DOUBLE * conversion_rate::DOUBLE END) DESC NULLS LAST, asset",
+        "definition": "SELECT asset\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE market IN ($market)\n  AND $__timeFilter(valid_from::TIMESTAMP)\nGROUP BY asset\nORDER BY max(CASE WHEN settlement_fee_ccy = 'BRL' THEN settlement_fee::DOUBLE ELSE settlement_fee::DOUBLE * conversion_rate::DOUBLE END) DESC NULLS LAST, asset",
         "refresh": 2,
-        "multi": true,
-        "includeAll": true,
-        "allValue": "'__all'",
+        "sort": 0,
         "current": {
           "selected": true,
-          "text": [
-            "DAP",
-            "DI1",
-            "DOL",
-            "EUR",
-            "IND",
-            "WDO",
-            "WIN"
-          ],
-          "value": [
-            "DAP",
-            "DI1",
-            "DOL",
-            "EUR",
-            "IND",
-            "WDO",
-            "WIN"
-          ]
+          "text": ["DOL", "WDO", "EUR", "IND", "WIN", "DI1", "DAP", "BGI"],
+          "value": ["DOL", "WDO", "EUR", "IND", "WIN", "DI1", "DAP", "BGI"]
         },
-        "sort": 1
+        "multi": true,
+        "includeAll": false,
+        "allowCustomValue": true
       }
     ]
   },
   "panels": [
     {
       "id": 1,
-      "type": "timeseries",
-      "title": "Settlement fee per contract by application month (BRL unless noted)",
-      "description": "Settlement fee per contract per asset, by validity month (log scale).",
-      "gridPos": {
-        "x": 0,
-        "y": 0,
-        "w": 24,
-        "h": 10
-      },
-      "interval": "1d",
-      "datasource": {
-        "type": "motherduck-duckdb-datasource",
-        "uid": "duckdb-minio"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "displayName": "${__field.labels.series}",
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "stepAfter",
-            "showPoints": "always",
-            "lineWidth": 2,
-            "scaleDistribution": {
-              "type": "log",
-              "log": 10
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "right"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "transformations": [
-        {
-          "id": "partitionByValues",
-          "options": {
-            "fields": [
-              "series"
-            ],
-            "keepFields": false,
-            "naming": {
-              "asLabels": true
-            }
-          }
-        }
-      ],
+      "type": "stat",
+      "title": "Assets",
+      "description": "Number of selected assets present in the reports in the range.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
-          "datasource": {
-            "type": "motherduck-duckdb-datasource",
-            "uid": "duckdb-minio"
-          },
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT valid_from::TIMESTAMP AS time,\n  concat_ws(' · ', asset, 'mkt ' || market, CASE WHEN settlement_fee_ccy <> 'BRL' THEN settlement_fee_ccy END) AS series,\n  settlement_fee::DOUBLE AS settlement_fee\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE settlement_fee IS NOT NULL\n  AND ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('__all' IN ($segment) OR segment IN ($segment))\n  AND ('__all' IN ($market) OR market IN ($market))\n  AND $__timeFilter(valid_from::TIMESTAMP)\nORDER BY time, series"
+          "rawSql": "SELECT count(DISTINCT asset) AS assets\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND $__timeFilter(valid_from::TIMESTAMP)"
         }
       ]
     },
     {
       "id": 2,
-      "type": "timeseries",
-      "title": "Conversion rates applied, by conversion instrument (sample assets)",
-      "description": "Conversion rate per conversion instrument, by validity month (log scale).",
-      "gridPos": {
-        "x": 0,
-        "y": 10,
-        "w": 24,
-        "h": 8
-      },
-      "interval": "1d",
-      "datasource": {
-        "type": "motherduck-duckdb-datasource",
-        "uid": "duckdb-minio"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "displayName": "${__field.labels.series}",
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "stepAfter",
-            "showPoints": "always",
-            "lineWidth": 2,
-            "scaleDistribution": {
-              "type": "log",
-              "log": 10
-            }
-          },
-          "decimals": 4
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "right"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "transformations": [
-        {
-          "id": "partitionByValues",
-          "options": {
-            "fields": [
-              "series"
-            ],
-            "keepFields": false,
-            "naming": {
-              "asLabels": true
-            }
-          }
-        }
-      ],
+      "type": "stat",
+      "title": "Monthly reports",
+      "description": "Number of monthly fee variable reports with the selected assets in the range.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
-          "datasource": {
-            "type": "motherduck-duckdb-datasource",
-            "uid": "duckdb-minio"
-          },
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\n  WHERE conversion_instrument_id IS NOT NULL\n    AND ('__all' IN ($asset) OR asset IN ($asset))\n    AND ('__all' IN ($segment) OR segment IN ($segment))\n    AND ('__all' IN ($market) OR market IN ($market))\n    AND $__timeFilter(valid_from::TIMESTAMP)\n),\nlabels AS (\n  SELECT conversion_instrument_id,\n    conversion_instrument_id::VARCHAR || ' (' || array_to_string(list_sort(list(DISTINCT asset))[1:4], ', ')\n      || CASE WHEN count(DISTINCT asset) > 4 THEN ', …' ELSE '' END || ')' AS series\n  FROM d\n  GROUP BY conversion_instrument_id\n)\nSELECT d.valid_from::TIMESTAMP AS time,\n  labels.series,\n  max(d.conversion_rate)::DOUBLE AS conversion_rate\nFROM d\nJOIN labels USING (conversion_instrument_id)\nGROUP BY time, labels.series\nORDER BY time, labels.series"
+          "rawSql": "SELECT count(DISTINCT report_dt) AS reports\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND $__timeFilter(valid_from::TIMESTAMP)"
         }
       ]
     },
     {
       "id": 3,
-      "type": "table",
-      "title": "Current fee variables (latest publication in range)",
-      "description": "All fee variables from the latest monthly report in range.",
-      "gridPos": {
-        "x": 0,
-        "y": 18,
-        "w": 24,
-        "h": 12
-      },
-      "datasource": {
-        "type": "motherduck-duckdb-datasource",
-        "uid": "duckdb-minio"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "^(settlement_fee|holding_daily_value|physical_delivery_rate|holding_reduction_factor|conversion_rate|previous_value|current_value)$"
-            },
-            "properties": [
-              {
-                "id": "decimals",
-                "value": 5
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true
-      },
+      "type": "stat",
+      "title": "Average settlement fee change in range",
+      "description": "Mean change of the selected assets' settlement fee from the first to the last report in the range.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
-          "datasource": {
-            "type": "motherduck-duckdb-datasource",
-            "uid": "duckdb-minio"
-          },
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\n  WHERE $__timeFilter(valid_from::TIMESTAMP)\n)\nSELECT asset, segment, market,\n  settlement_fee::DOUBLE AS settlement_fee, settlement_fee_ccy,\n  holding_reduction_factor::DOUBLE AS holding_reduction_factor,\n  holding_daily_value::DOUBLE AS holding_daily_value, holding_daily_value_ccy,\n  physical_delivery_rate::DOUBLE AS physical_delivery_rate,\n  conversion_instrument_id, conversion_ref_dt,\n  conversion_rate::DOUBLE AS conversion_rate,\n  report_dt, valid_from, valid_to\nFROM d\nWHERE report_dt = (SELECT max(report_dt) FROM d)\n  AND ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('__all' IN ($segment) OR segment IN ($segment))\n  AND ('__all' IN ($market) OR market IN ($market))\nORDER BY segment, market, asset"
+          "rawSql": "WITH r AS (\n  SELECT\n    asset,\n    arg_max(settlement_fee, valid_from)::DOUBLE\n      / nullif(arg_min(settlement_fee, valid_from)::DOUBLE, 0) - 1 AS change\n  FROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND market IN ($market)\n    AND settlement_fee IS NOT NULL\n    AND $__timeFilter(valid_from::TIMESTAMP)\n  GROUP BY asset\n)\nSELECT avg(change) AS avg_change\nFROM r"
         }
       ]
     },
     {
       "id": 4,
-      "type": "table",
-      "title": "Fee variable changes vs previous publication",
-      "description": "Fee variables that changed vs the previous publication.",
-      "gridPos": {
-        "x": 0,
-        "y": 30,
-        "w": 14,
-        "h": 12
-      },
-      "datasource": {
-        "type": "motherduck-duckdb-datasource",
-        "uid": "duckdb-minio"
-      },
+      "type": "stat",
+      "title": "Latest validity month",
+      "description": "Validity month of the most recent report with the selected assets in the range.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT strftime(max(valid_from), '%Y-%m') AS latest\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND $__timeFilter(valid_from::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Settlement fee per contract (BRL)",
+      "description": "Settlement fee per contract per selected asset by validity month, USD fees converted at the report's rate (log scale).",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "^(settlement_fee|holding_daily_value|physical_delivery_rate|holding_reduction_factor|conversion_rate|previous_value|current_value)$"
-            },
-            "properties": [
-              {
-                "id": "decimals",
-                "value": 5
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "^change_pct$"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percentunit"
-              },
-              {
-                "id": "decimals",
-                "value": 2
-              }
-            ]
-          }
-        ]
+        "defaults": {
+          "unit": "currencyBRL",
+          "decimals": 4,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "scaleDistribution": { "type": "log", "log": 10 } }
+        },
+        "overrides": []
       },
       "options": {
-        "showHeader": true
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  valid_from::TIMESTAMP AS time,\n  asset,\n  max(CASE WHEN settlement_fee_ccy = 'BRL' THEN settlement_fee::DOUBLE ELSE settlement_fee::DOUBLE * conversion_rate::DOUBLE END) AS settlement_fee\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND settlement_fee > 0\n  AND $__timeFilter(valid_from::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Settlement fee change since start of range",
+      "description": "Settlement fee relative to each asset's first fee in the range, to compare assets on one scale.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH monthly AS (\n  SELECT valid_from::TIMESTAMP AS time, asset, max(settlement_fee)::DOUBLE AS fee\n  FROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND market IN ($market)\n    AND settlement_fee IS NOT NULL\n    AND $__timeFilter(valid_from::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT time, asset, fee / nullif(first_value(fee) OVER (PARTITION BY asset ORDER BY time), 0) - 1 AS change\nFROM monthly\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Monthly settlement fee change",
+      "description": "Settlement fee vs the previous report's fee, per selected asset.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH monthly AS (\n  SELECT valid_from::TIMESTAMP AS time, asset, max(settlement_fee)::DOUBLE AS fee\n  FROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND market IN ($market)\n    AND settlement_fee IS NOT NULL\n    AND valid_from::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 45 DAY\n    AND valid_from::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  GROUP BY ALL\n),\nchanges AS (\n  SELECT time, asset, fee / nullif(lag(fee) OVER (PARTITION BY asset ORDER BY time), 0) - 1 AS change\n  FROM monthly\n)\nSELECT time, asset, change\nFROM changes\nWHERE $__timeFilter(time)\n  AND change IS NOT NULL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Settlement fee in reference currency",
+      "description": "BRL settlement fee divided by its FX conversion rate (USD, EUR, MXN), i.e. the fee in foreign currency; flat lines mean the BRL fee only moved with FX (log scale).",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 4,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "scaleDistribution": { "type": "log", "log": 10 } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  valid_from::TIMESTAMP AS time,\n  asset,\n  max(settlement_fee::DOUBLE / conversion_rate::DOUBLE) AS fee_in_reference_unit\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND settlement_fee_ccy = 'BRL'\n  AND settlement_fee > 0\n  AND conversion_rate > 0\n  AND conversion_rate < 100\n  AND $__timeFilter(valid_from::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Conversion rates applied",
+      "description": "Conversion rate per conversion instrument used by the selected assets, labelled with sample assets (log scale).",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 4,
+          "displayName": "${__field.labels.conversion}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "scaleDistribution": { "type": "log", "log": 10 } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["conversion"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND market IN ($market)\n    AND conversion_instrument_id IS NOT NULL\n    AND $__timeFilter(valid_from::TIMESTAMP)\n),\nlabels AS (\n  SELECT conversion_instrument_id,\n    conversion_instrument_id::VARCHAR || ' (' || array_to_string(list_sort(list(DISTINCT asset))[1:4], ', ')\n      || CASE WHEN count(DISTINCT asset) > 4 THEN ', …' ELSE '' END || ')' AS conversion\n  FROM d\n  GROUP BY conversion_instrument_id\n)\nSELECT d.valid_from::TIMESTAMP AS time, labels.conversion, max(d.conversion_rate)::DOUBLE AS conversion_rate\nFROM d\nJOIN labels USING (conversion_instrument_id)\nGROUP BY ALL\nORDER BY time, conversion"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Holding fee daily value",
+      "description": "Daily holding (permanence) fee value per contract per selected asset, in its own currency.",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 5,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT valid_from::TIMESTAMP AS time, asset, max(holding_daily_value)::DOUBLE AS holding_daily_value\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND holding_daily_value IS NOT NULL\n  AND $__timeFilter(valid_from::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Holding fee reduction factor",
+      "description": "Holding (permanence) fee reduction factor per selected asset.",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 9 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT valid_from::TIMESTAMP AS time, asset, max(holding_reduction_factor)::DOUBLE AS holding_reduction_factor\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND holding_reduction_factor IS NOT NULL\n  AND $__timeFilter(valid_from::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Settlement cost of one contract each (BRL), stacked by asset",
+      "description": "BRL settlement fee for one contract of each selected asset, stacked so the top edge is the cost of the basket.",
+      "gridPos": { "x": 0, "y": 41, "w": 12, "h": 10 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyBRL",
+          "decimals": 2,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  valid_from::TIMESTAMP AS time,\n  asset,\n  max(CASE WHEN settlement_fee_ccy = 'BRL' THEN settlement_fee::DOUBLE ELSE settlement_fee::DOUBLE * conversion_rate::DOUBLE END) AS settlement_fee\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND settlement_fee IS NOT NULL\n  AND $__timeFilter(valid_from::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Assets in the report, stacked by segment",
+      "description": "Distinct assets per segment in each monthly report for the selected markets, stacked so the top edge is the total; ignores the asset filter.",
+      "gridPos": { "x": 12, "y": 41, "w": 12, "h": 10 },
+      "interval": "1M",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
         {
           "refId": "A",
-          "datasource": {
-            "type": "motherduck-duckdb-datasource",
-            "uid": "duckdb-minio"
-          },
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH u AS (\n  UNPIVOT (\n    SELECT valid_from, segment, market, asset,\n      settlement_fee, holding_reduction_factor, holding_daily_value, physical_delivery_rate\n    FROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\n    WHERE ('__all' IN ($asset) OR asset IN ($asset))\n      AND ('__all' IN ($segment) OR segment IN ($segment))\n      AND ('__all' IN ($market) OR market IN ($market))\n  )\n  ON settlement_fee, holding_reduction_factor, holding_daily_value, physical_delivery_rate\n  INTO NAME fee_variable VALUE amount\n),\nd AS (\n  SELECT *,\n    lag(amount) OVER (\n      PARTITION BY segment, market, asset, fee_variable\n      ORDER BY valid_from\n    ) AS prev_amount\n  FROM u\n)\nSELECT valid_from, asset, market, fee_variable,\n  prev_amount::DOUBLE AS previous_value,\n  amount::DOUBLE AS current_value,\n  (amount / nullif(prev_amount, 0) - 1)::DOUBLE AS change_pct\nFROM d\nWHERE prev_amount IS NOT NULL\n  AND amount <> prev_amount\n  AND $__timeFilter(valid_from::TIMESTAMP)\nORDER BY valid_from DESC, fee_variable, abs(amount - prev_amount) DESC\nLIMIT 500"
+          "rawSql": "SELECT\n  valid_from::TIMESTAMP AS time,\n  count(DISTINCT asset) FILTER (WHERE segment = '4') AS \"Commodities\",\n  count(DISTINCT asset) FILTER (WHERE segment = '5') AS \"Financial\",\n  count(DISTINCT asset) FILTER (WHERE segment = '6') AS \"Gold\",\n  count(DISTINCT asset) FILTER (WHERE segment NOT IN ('4', '5', '6')) AS \"Other\"\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE market IN ($market)\n  AND $__timeFilter(valid_from::TIMESTAMP)\nGROUP BY time\nORDER BY time"
         }
       ]
     },
     {
       "id": 5,
-      "type": "barchart",
-      "title": "Highest BRL settlement fees per contract (latest publication in range)",
-      "description": "Top 15 BRL settlement fees in the latest report; ignores the filters.",
-      "gridPos": {
-        "x": 14,
-        "y": 30,
-        "w": 10,
-        "h": 12
-      },
-      "datasource": {
-        "type": "motherduck-duckdb-datasource",
-        "uid": "duckdb-minio"
-      },
+      "type": "table",
+      "title": "Selected assets (latest report in range)",
+      "description": "All fee variables of the selected assets in the latest monthly report in the range.",
+      "gridPos": { "x": 0, "y": 51, "w": 24, "h": 10 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
-        "defaults": {
-          "unit": "currencyBRL",
-          "decimals": 2,
-          "custom": {
-            "fillOpacity": 80
-          }
-        },
-        "overrides": []
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "^(settlement_fee|holding_daily_value|physical_delivery_rate|holding_reduction_factor|conversion_rate)$" }, "properties": [{ "id": "decimals", "value": 5 }] },
+          { "matcher": { "id": "byName", "options": "settlement_fee_brl" }, "properties": [{ "id": "unit", "value": "currencyBRL" }, { "id": "decimals", "value": 4 }] }
+        ]
       },
-      "options": {
-        "orientation": "horizontal",
-        "xField": "instrument",
-        "showValue": "never",
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
+      "options": { "showHeader": true },
       "targets": [
         {
           "refId": "A",
-          "datasource": {
-            "type": "motherduck-duckdb-datasource",
-            "uid": "duckdb-minio"
-          },
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\n  WHERE $__timeFilter(valid_from::TIMESTAMP)\n)\nSELECT asset || ' (mkt ' || market || ')' AS instrument,\n  settlement_fee::DOUBLE AS settlement_fee\nFROM d\nWHERE report_dt = (SELECT max(report_dt) FROM d)\n  AND settlement_fee_ccy = 'BRL'\nORDER BY settlement_fee DESC\nLIMIT 15"
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND market IN ($market)\n    AND $__timeFilter(valid_from::TIMESTAMP)\n)\nSELECT\n  asset,\n  CASE segment WHEN '4' THEN 'Commodities' WHEN '5' THEN 'Financial' WHEN '6' THEN 'Gold' ELSE segment END AS segment,\n  CASE market WHEN '1' THEN 'Spot' WHEN '2' THEN 'Futures' WHEN '3' THEN 'Options on spot' WHEN '4' THEN 'Options on futures' WHEN '5' THEN 'Forward' ELSE market END AS market,\n  settlement_fee::DOUBLE AS settlement_fee,\n  settlement_fee_ccy,\n  CASE WHEN settlement_fee_ccy = 'BRL' THEN settlement_fee::DOUBLE ELSE settlement_fee::DOUBLE * conversion_rate::DOUBLE END AS settlement_fee_brl,\n  holding_daily_value::DOUBLE AS holding_daily_value,\n  holding_daily_value_ccy,\n  holding_reduction_factor::DOUBLE AS holding_reduction_factor,\n  physical_delivery_rate::DOUBLE AS physical_delivery_rate,\n  conversion_instrument_id,\n  conversion_ref_dt,\n  conversion_rate::DOUBLE AS conversion_rate,\n  valid_from,\n  valid_to\nFROM d\nWHERE report_dt = (SELECT max(report_dt) FROM d)\nORDER BY settlement_fee_brl DESC NULLS LAST, asset, market"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Fee variable changes vs previous report",
+      "description": "Fee variables of the selected assets that changed vs the previous monthly report.",
+      "gridPos": { "x": 0, "y": 61, "w": 24, "h": 10 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "^(previous_value|current_value)$" }, "properties": [{ "id": "decimals", "value": 5 }] },
+          { "matcher": { "id": "byName", "options": "change" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH u AS (\n  UNPIVOT (\n    SELECT valid_from, market, asset,\n      settlement_fee, holding_reduction_factor, holding_daily_value, physical_delivery_rate\n    FROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\n    WHERE asset IN ($asset)\n      AND market IN ($market)\n  )\n  ON settlement_fee, holding_reduction_factor, holding_daily_value, physical_delivery_rate\n  INTO NAME fee_variable VALUE amount\n),\nd AS (\n  SELECT *,\n    lag(amount) OVER (PARTITION BY market, asset, fee_variable ORDER BY valid_from) AS prev_amount\n  FROM u\n)\nSELECT\n  valid_from,\n  asset,\n  market,\n  fee_variable,\n  prev_amount::DOUBLE AS previous_value,\n  amount::DOUBLE AS current_value,\n  amount::DOUBLE / nullif(prev_amount::DOUBLE, 0) - 1 AS change\nFROM d\nWHERE prev_amount IS NOT NULL\n  AND amount <> prev_amount\n  AND $__timeFilter(valid_from::TIMESTAMP)\nORDER BY valid_from DESC, fee_variable, abs(amount - prev_amount) DESC\nLIMIT 500"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Highest settlement fees (latest report)",
+      "description": "Top 15 BRL-equivalent settlement fees in the latest report for the selected markets; ignores the asset filter.",
+      "gridPos": { "x": 0, "y": 71, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "settlement_fee" }, "properties": [{ "id": "decimals", "value": 4 }] },
+          { "matcher": { "id": "byName", "options": "settlement_fee_brl" }, "properties": [{ "id": "unit", "value": "currencyBRL" }, { "id": "decimals", "value": 4 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\n  WHERE market IN ($market)\n    AND $__timeFilter(valid_from::TIMESTAMP)\n)\nSELECT\n  asset,\n  CASE segment WHEN '4' THEN 'Commodities' WHEN '5' THEN 'Financial' WHEN '6' THEN 'Gold' ELSE segment END AS segment,\n  settlement_fee::DOUBLE AS settlement_fee,\n  settlement_fee_ccy AS ccy,\n  CASE WHEN settlement_fee_ccy = 'BRL' THEN settlement_fee::DOUBLE ELSE settlement_fee::DOUBLE * conversion_rate::DOUBLE END AS settlement_fee_brl\nFROM d\nWHERE report_dt = (SELECT max(report_dt) FROM d)\n  AND settlement_fee IS NOT NULL\nORDER BY settlement_fee_brl DESC, asset\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Biggest settlement fee increases (range)",
+      "description": "Top 15 settlement fee changes from first to last report in the range for the selected markets; ignores the asset filter.",
+      "gridPos": { "x": 8, "y": 71, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 4 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "change" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH r AS (\n  SELECT\n    asset,\n    any_value(settlement_fee_ccy) AS ccy,\n    arg_min(settlement_fee, valid_from)::DOUBLE AS first_fee,\n    arg_max(settlement_fee, valid_from)::DOUBLE AS last_fee\n  FROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\n  WHERE market IN ($market)\n    AND settlement_fee IS NOT NULL\n    AND $__timeFilter(valid_from::TIMESTAMP)\n  GROUP BY asset\n)\nSELECT *, last_fee / first_fee - 1 AS change\nFROM r\nWHERE first_fee > 0\nORDER BY change DESC, asset\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Biggest settlement fee decreases (range)",
+      "description": "Bottom 15 settlement fee changes from first to last report in the range for the selected markets; ignores the asset filter.",
+      "gridPos": { "x": 16, "y": 71, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 4 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "change" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH r AS (\n  SELECT\n    asset,\n    any_value(settlement_fee_ccy) AS ccy,\n    arg_min(settlement_fee, valid_from)::DOUBLE AS first_fee,\n    arg_max(settlement_fee, valid_from)::DOUBLE AS last_fee\n  FROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\n  WHERE market IN ($market)\n    AND settlement_fee IS NOT NULL\n    AND $__timeFilter(valid_from::TIMESTAMP)\n  GROUP BY asset\n)\nSELECT *, last_fee / first_fee - 1 AS change\nFROM r\nWHERE first_fee > 0\nORDER BY change ASC, asset\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Fees per asset",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 83, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 21,
+          "type": "timeseries",
+          "title": "$asset fees and conversion rate",
+          "description": "Settlement fee (BRL) and holding daily value on the left axis, conversion rate on the right axis, one panel per selected asset.",
+          "gridPos": { "x": 0, "y": 84, "w": 24, "h": 9 },
+          "repeat": "asset",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "interval": "1M",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 4,
+              "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+            },
+            "overrides": [
+              { "matcher": { "id": "byName", "options": "Settlement fee (BRL)" }, "properties": [{ "id": "unit", "value": "currencyBRL" }] },
+              { "matcher": { "id": "byName", "options": "Conversion rate" }, "properties": [{ "id": "custom.axisPlacement", "value": "right" }, { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }] }
+            ]
+          },
+          "options": {
+            "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi", "sort": "none" }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "SELECT\n  valid_from::TIMESTAMP AS time,\n  max(CASE WHEN settlement_fee_ccy = 'BRL' THEN settlement_fee::DOUBLE ELSE settlement_fee::DOUBLE * conversion_rate::DOUBLE END) AS \"Settlement fee (BRL)\",\n  max(holding_daily_value)::DOUBLE AS \"Holding daily value\",\n  max(conversion_rate)::DOUBLE AS \"Conversion rate\"\nFROM read_parquet('s3://uploads/b3_fee_variables/monthly_parse/*.parquet')\nWHERE asset = $asset\n  AND market IN ($market)\n  AND $__timeFilter(valid_from::TIMESTAMP)\nGROUP BY time\nORDER BY time"
+            }
+          ]
         }
       ]
     }
