@@ -248,7 +248,7 @@ def monthly_parse(
     name="yearly_download",
     group_name="b3_history",
     partitions_def=dg.TimeWindowPartitionsDefinition(
-        start="2025",
+        start="2020",
         timezone="America/Sao_Paulo",
         cron_schedule="0 0 1 1 *",
         fmt=r"%Y",
@@ -283,7 +283,7 @@ def yearly_download(context: dg.AssetExecutionContext) -> bytes:
     ins={"yearly_download": dg.AssetIn(key=["b3_history", "yearly_download"])},
     group_name="b3_history",
     partitions_def=dg.TimeWindowPartitionsDefinition(
-        start="2025",
+        start="2020",
         timezone="America/Sao_Paulo",
         cron_schedule="0 0 1 1 *",
         fmt=r"%Y",
