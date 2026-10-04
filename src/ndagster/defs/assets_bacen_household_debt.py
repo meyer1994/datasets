@@ -17,7 +17,7 @@ DATASET_URL = (
 )
 
 PARTITIONS = dg.TimeWindowPartitionsDefinition(
-    start="2020-01",
+    start="2005-01",
     timezone="America/Sao_Paulo",
     cron_schedule="0 0 1 * *",
     fmt=r"%Y-%m",

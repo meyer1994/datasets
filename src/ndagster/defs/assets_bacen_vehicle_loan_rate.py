@@ -35,7 +35,7 @@ def output_metadata(df: pl.DataFrame) -> dict[str, dg.MetadataValue]:
     name="monthly_download",
     group_name="bacen_vehicle_loan_rate",
     partitions_def=dg.TimeWindowPartitionsDefinition(
-        start="2020-01",
+        start="2000-06",
         timezone="America/Sao_Paulo",
         cron_schedule="0 0 1 * *",
         fmt=r"%Y-%m",
@@ -73,7 +73,7 @@ def monthly_download(context: dg.AssetExecutionContext) -> bytes:
     },
     group_name="bacen_vehicle_loan_rate",
     partitions_def=dg.TimeWindowPartitionsDefinition(
-        start="2020-01",
+        start="2000-06",
         timezone="America/Sao_Paulo",
         cron_schedule="0 0 1 * *",
         fmt=r"%Y-%m",

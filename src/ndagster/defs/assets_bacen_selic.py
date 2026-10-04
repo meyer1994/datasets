@@ -29,7 +29,7 @@ def output_metadata(df: pl.DataFrame) -> dict[str, dg.MetadataValue]:
     name="daily_download",
     group_name="bacen_selic",
     partitions_def=dg.TimeWindowPartitionsDefinition(
-        start="2020-01-01",
+        start="1986-06-04",
         timezone="America/Sao_Paulo",
         cron_schedule="0 0 * * 1-5",
         fmt=r"%Y-%m-%d",
@@ -60,7 +60,7 @@ def daily_download(context: dg.AssetExecutionContext) -> bytes:
     ins={"daily_download": dg.AssetIn(key=["bacen_selic", "daily_download"])},
     group_name="bacen_selic",
     partitions_def=dg.TimeWindowPartitionsDefinition(
-        start="2020-01-01",
+        start="1986-06-04",
         timezone="America/Sao_Paulo",
         cron_schedule="0 0 * * 1-5",
         fmt=r"%Y-%m-%d",

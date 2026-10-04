@@ -69,7 +69,9 @@ Notes:
 
 ## BACEN asset list (`src/ndagster/defs/assets_bacen_*.py`)
 
-Same conventions as the B3 modules, but partitions start in 2020. All use the
+Same conventions as the B3 modules, but partitions start at each series' first
+SGS observation (Selic 1986-06, vehicle loans 2000-06, household debt 2005-01,
+credit cards 2010, others 2011-03). All use the
 shared helper `bacen_sgs.py`: `download_series(code, start, end)` calls the SGS
 SOAP facade (`www3.bcb.gov.br/wssgs/services/FachadaWSSGS`,
 `getValoresSeriesXML`; `api.bcb.gov.br` does not resolve) and wraps the XML in a
