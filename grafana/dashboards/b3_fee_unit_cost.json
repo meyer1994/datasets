@@ -153,6 +153,7 @@
       "id": 1,
       "type": "timeseries",
       "title": "Total unit cost (exchange + registration) by application month",
+      "description": "Per-contract fee (exchange fee + registration fee, in BRL) from the monthly B3 Fee Unit Cost report (BVBG.043.01, `b3_fee_unit_cost` parquet), plotted at each publication's start-of-validity date as a step line. One series per fee line (asset, market, day-trade flag, trade type, strategy leg). Filtered by the Asset, Market and Day trade variables and the time range (on the validity start date).",
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -221,6 +222,7 @@
       "id": 2,
       "type": "table",
       "title": "Current unit costs (latest publication in range)",
+      "description": "All fee lines from the most recent Fee Unit Cost report whose validity start falls in the time range: exchange, registration and total fee per contract (BRL), plus rollover fees and their date window, and the validity period. Filtered by the Asset, Market and Day trade variables. The latest report is picked before the variable filters, so the table is empty if that report has no rows matching them.",
       "gridPos": {
         "x": 0,
         "y": 10,
@@ -273,6 +275,7 @@
       "id": 3,
       "type": "table",
       "title": "Unit cost changes vs previous publication",
+      "description": "Fee lines whose total fee per contract (exchange + registration, BRL) changed compared with the previous monthly publication of the same line (same segment, market, asset, day-trade flag, trade type and strategy leg), with the percentage change. The previous value is looked up over the full history, even before the time range. Filtered by the Asset, Market and Day trade variables and the time range; newest first, capped at 500 rows.",
       "gridPos": {
         "x": 0,
         "y": 22,
@@ -341,6 +344,7 @@
       "id": 4,
       "type": "barchart",
       "title": "Most expensive regular contracts (latest publication in range)",
+      "description": "Top 15 asset/market pairs by total fee per contract in the latest Fee Unit Cost report in the time range, with exchange and registration fees stacked (BRL). Only regular lines are included: not day trade, trade type 0, no strategy leg. Unfiltered top-N: the Asset, Market and Day trade variables do not apply.",
       "gridPos": {
         "x": 14,
         "y": 22,
@@ -394,6 +398,7 @@
       "id": 5,
       "type": "timeseries",
       "title": "Day-trade unit cost as % of regular",
+      "description": "Day-trade total fee per contract divided by the regular (non-day-trade) total fee for the same publication, segment, market, asset, trade type and strategy leg, plotted at the validity start date. Lines without a matching day-trade fee are not shown. Filtered by the Asset and Market variables and the time range; the Day trade variable is not applied.",
       "gridPos": {
         "x": 0,
         "y": 34,

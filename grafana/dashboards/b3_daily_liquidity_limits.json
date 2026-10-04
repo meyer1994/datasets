@@ -44,6 +44,7 @@
       "id": 1,
       "type": "timeseries",
       "title": "Daily liquidity limit per ticker",
+      "description": "Daily liquidity limit (a quantity limit per instrument) for each selected ticker, from B3's Daily Liquidity Limit file (LLD.txt, b3_daily_liquidity_limits daily_parse parquet). Takes the max liquidity_limit per ticker per trading day, since a ticker can map to more than one instrument id. Filtered by the Ticker variable and the time range; unlimited (999999999-style) values are excluded.",
       "gridPos": { "x": 0, "y": 0, "w": 24, "h": 9 },
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
@@ -74,6 +75,7 @@
       "id": 2,
       "type": "table",
       "title": "Selected tickers: liquidity limit over the range",
+      "description": "One row per selected ticker and instrument id, summarising its daily liquidity limit (quantity) from the b3_daily_liquidity_limits parquet over the time range: days present, latest date, first, latest, min and max limit, and the percent change from first to latest. Filtered by the Ticker variable and the time range; unlimited values are excluded.",
       "gridPos": { "x": 0, "y": 9, "w": 24, "h": 8 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
@@ -99,6 +101,7 @@
       "id": 3,
       "type": "table",
       "title": "Largest limit changes vs previous day (latest day in range)",
+      "description": "Top 50 instruments whose liquidity limit changed between the latest trading day in the range and the previous available day, matched by instrument id and ranked by absolute percent change (a previous limit of 0 gives an empty change and is listed first). Data from the b3_daily_liquidity_limits parquet; unfiltered by ticker (time range only), unlimited values excluded.",
       "gridPos": { "x": 0, "y": 17, "w": 12, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
@@ -124,6 +127,7 @@
       "id": 4,
       "type": "table",
       "title": "Largest liquidity limits (latest day in range)",
+      "description": "Top 50 instruments by daily liquidity limit (quantity) on the latest trading day in the selected range, from the b3_daily_liquidity_limits parquet. Unfiltered by ticker (time range only); unlimited (999999999-style) values are excluded.",
       "gridPos": { "x": 12, "y": 17, "w": 12, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {

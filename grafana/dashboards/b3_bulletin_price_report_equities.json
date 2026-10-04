@@ -44,6 +44,7 @@
       "id": 1,
       "type": "candlestick",
       "title": "$ticker daily candles",
+      "description": "Daily OHLC candles (BRL) from the Simplified Price Report - Equities (BVBG.186.01) parquet: first, max, min and last traded price per session, with the number of regular trades as the volume bars. Repeated once per selected `ticker`; filtered by the dashboard time range.",
       "gridPos": { "x": 0, "y": 0, "w": 24, "h": 10 },
       "repeat": "ticker",
       "repeatDirection": "h",
@@ -78,6 +79,7 @@
       "id": 2,
       "type": "timeseries",
       "title": "Regular trades per day",
+      "description": "Number of regular trades per session for each selected `ticker`, from the Simplified Price Report - Equities parquet (`regular_trades`), shown as stacked bars. Filtered by the `ticker` variable and the dashboard time range.",
       "gridPos": { "x": 0, "y": 10, "w": 24, "h": 8 },
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
@@ -108,6 +110,7 @@
       "id": 3,
       "type": "table",
       "title": "Most traded (latest day in range)",
+      "description": "Top 20 equities by number of regular trades on the latest trading day within the selected time range, with open/high/low/close prices (BRL) and intraday change (last vs. first price). Covers all tickers; not filtered by the `ticker` variable.",
       "gridPos": { "x": 0, "y": 18, "w": 12, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
@@ -133,6 +136,7 @@
       "id": 4,
       "type": "table",
       "title": "Largest intraday moves (latest day in range, 100+ trades)",
+      "description": "Top 20 equities by absolute intraday change (last price vs. first price, up or down) on the latest trading day within the selected time range, limited to tickers with at least 100 regular trades. Open/close in BRL; covers all tickers, not filtered by the `ticker` variable.",
       "gridPos": { "x": 12, "y": 18, "w": 12, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {

@@ -66,6 +66,7 @@
       "id": 1,
       "type": "timeseries",
       "title": "Registered instruments per day by record type",
+      "description": "Number of instruments in the daily B3 Instruments file (BVBG.028.02, b3_instruments daily_parse parquet), counted per trading day and stacked by record type (equity, option_on_equity, future, etc.). Filtered by the time range and the Record type, Asset and Ticker starts with variables.",
       "gridPos": { "x": 0, "y": 0, "w": 24, "h": 9 },
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
@@ -96,6 +97,7 @@
       "id": 2,
       "type": "table",
       "title": "Upcoming expirations, next 30 days (latest day in range)",
+      "description": "Instruments expiring within 30 days of the latest trading day in the time range, grouped by expiration date, asset and record type, with call/put counts and min/max strike. Uses expiration_date (or maturity date) from the Instruments parquet; filtered by the Record type, Asset and Ticker starts with variables. The latest day is picked before those filters are applied; capped at 500 rows.",
       "gridPos": { "x": 0, "y": 9, "w": 14, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": { "defaults": {}, "overrides": [] },
@@ -115,6 +117,7 @@
       "id": 3,
       "type": "table",
       "title": "Assets with most listed options (latest day in range)",
+      "description": "Top 20 underlying assets by number of listed options (rows with an option_type) on the latest trading day in the time range, with call/put counts and number of distinct expiration dates. Unfiltered top-N: only the time range applies, not the Record type, Asset or Ticker variables.",
       "gridPos": { "x": 14, "y": 9, "w": 10, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
@@ -139,6 +142,7 @@
       "id": 4,
       "type": "table",
       "title": "New listings: trading start in range (latest day in range)",
+      "description": "Instruments from the latest trading day in the time range whose trading_start_date also falls inside the time range, newest first, with ticker, ISIN, asset, expiry, option type and strike. Filtered by the Record type, Asset and Ticker starts with variables; capped at 1000 rows.",
       "gridPos": { "x": 0, "y": 21, "w": 24, "h": 10 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
@@ -163,6 +167,7 @@
       "id": 5,
       "type": "table",
       "title": "Instrument lookup (latest day in range)",
+      "description": "Full registry details for each instrument on the latest trading day in the time range: ticker, ISIN, category, asset, issuer, CFI code, expiry, option type/style, strike, underlying, contract multiplier, round lot, last price and trading start/end dates. Filtered by the Record type, Asset and Ticker starts with variables, sorted by ticker and capped at 1000 rows.",
       "gridPos": { "x": 0, "y": 31, "w": 24, "h": 14 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {

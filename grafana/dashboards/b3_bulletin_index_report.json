@@ -44,6 +44,7 @@
       "id": 1,
       "type": "timeseries",
       "title": "$index close",
+      "description": "Daily closing value (in index points) of the selected index, from the IndexReport (BVBG.087.01) daily_parse parquet (`closing_price` of `index` records, one point per trading day). The panel repeats once per index chosen in the Index variable and follows the dashboard time range.",
       "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
       "repeat": "index",
       "repeatDirection": "h",
@@ -67,6 +68,7 @@
       "id": 2,
       "type": "table",
       "title": "Indexes (latest day in range)",
+      "description": "Snapshot of the selected indexes from the IndexReport (BVBG.087.01) daily_parse parquet: description, closing value, daily oscillation, and the number of rising, falling and stable shares. Only the latest trading day within the dashboard time range is shown, one row per index, filtered by the Index variable.",
       "gridPos": { "x": 0, "y": 8, "w": 24, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {

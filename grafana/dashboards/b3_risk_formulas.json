@@ -45,6 +45,7 @@
       "id": 1,
       "type": "bargauge",
       "title": "Formulas per family (latest day in range)",
+      "description": "Number of risk formulas B3 published in FormulasRisco.txt on the latest trading day in the selected time range, counted per formula family (from the b3_risk_formulas daily_parse parquet). Formula family is our own grouping derived from formula id bands, not a B3 field. Filtered by the Formula family variable.",
       "gridPos": { "x": 0, "y": 0, "w": 8, "h": 9 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
@@ -72,6 +73,7 @@
       "id": 2,
       "type": "timeseries",
       "title": "Published formulas per day by family",
+      "description": "Stacked daily count of risk formulas in each day's FormulasRisco.txt file (b3_risk_formulas daily_parse parquet), split by formula family. Family is derived by us from formula id bands. Filtered by the time range and the Formula family variable.",
       "gridPos": { "x": 8, "y": 0, "w": 16, "h": 9 },
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
@@ -103,6 +105,7 @@
       "id": 3,
       "type": "table",
       "title": "Formula changes vs previous published day (added / removed / renamed)",
+      "description": "Compares each day's risk formula catalogue with the previous published day in the selected range, matched by formula id: ids that appear are added, ids that disappear are removed, and ids whose name changed are renamed (showing old and new name). The first day in the range has nothing to compare against; newest changes first, capped at 500 rows. Filtered by the time range and the Formula family variable.",
       "gridPos": { "x": 0, "y": 9, "w": 24, "h": 9 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": { "defaults": {}, "overrides": [] },
@@ -122,6 +125,7 @@
       "id": 4,
       "type": "table",
       "title": "Risk formula catalog (latest day in range)",
+      "description": "Full list of risk formulas (id, derived family, name) from the latest trading day in the selected range of the b3_risk_formulas daily_parse parquet, filtered by the Formula family variable. first_seen is the earliest date the formula id appears in all stored history, ignoring the time range and family filter.",
       "gridPos": { "x": 0, "y": 18, "w": 24, "h": 20 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {

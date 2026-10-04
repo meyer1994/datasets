@@ -43,6 +43,7 @@
       "id": 1,
       "type": "timeseries",
       "title": "$ticker settlement and open interest",
+      "description": "Daily settlement price (adjusted quote, line) and open interest (contracts, bars on the right axis) for one derivatives contract, from the B3 Simplified Price Report - Derivatives (BVBG.187.01) daily parquet. One panel is repeated per contract selected in the Contract variable, limited to the dashboard time range.",
       "gridPos": { "x": 0, "y": 0, "w": 24, "h": 9 },
       "repeat": "ticker",
       "repeatDirection": "h",
@@ -79,6 +80,7 @@
       "id": 2,
       "type": "timeseries",
       "title": "Regular trades per day",
+      "description": "Number of regular trades per day for each contract selected in the Contract variable, shown as stacked bars (one series per contract), from the BVBG.187.01 daily parquet (regular_trades column). Filtered by the dashboard time range.",
       "gridPos": { "x": 0, "y": 9, "w": 24, "h": 8 },
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
@@ -109,6 +111,7 @@
       "id": 3,
       "type": "table",
       "title": "Largest open interest (latest day in range)",
+      "description": "Top 20 derivatives contracts by open interest on the latest trading day within the dashboard time range, from the BVBG.187.01 daily parquet. Shows trades, last price, settlement vs. previous settlement (and their difference), settlement rate and currency. Not filtered by the Contract variable.",
       "gridPos": { "x": 0, "y": 17, "w": 24, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
