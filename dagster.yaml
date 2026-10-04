@@ -10,3 +10,68 @@ storage:
         env: DAGSTER_PG_PASSWORD
       db_name:
         env: DAGSTER_PG_DB
+
+local_artifact_storage:
+  module: dagster._core.storage.root
+  class: LocalArtifactStorage
+  config:
+    base_dir: /opt/dagster/dagster_home/storage
+
+compute_logs:
+  module: dagster._core.storage.local_compute_log_manager
+  class: LocalComputeLogManager
+  config:
+    base_dir: /opt/dagster/dagster_home/storage/compute_logs
+
+run_queue:
+  max_concurrent_runs: 8
+  # tag_concurrency_limits:
+  #   - key: dagster/backfill
+  #     limit: 10
+
+run_launcher:
+  module: dagster._core.launcher
+  class: DefaultRunLauncher
+
+run_monitoring:
+  enabled: true
+  poll_interval_seconds: 60
+
+run_retries:
+  enabled: true
+  max_retries: 3
+  retry_on_asset_or_op_failure: false
+
+retention:
+  schedule:
+    purge_after_days: 90
+  sensor:
+    purge_after_days:
+      skipped: 7
+      failure: 30
+      success: -1
+
+sensors:
+  use_threads: true
+  num_workers: 8
+
+schedules:
+  use_threads: true
+  num_workers: 8
+
+backfills:
+  use_threads: true
+  num_workers: 8
+
+auto_materialize:
+  enabled: true
+  use_sensors: true
+  max_tick_retries: 3
+  use_threads: true
+  num_workers: 4
+
+telemetry:
+  enabled: true
+
+nux:
+  enabled: true
