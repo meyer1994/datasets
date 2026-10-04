@@ -37,11 +37,16 @@ partitions are time-windowed, timezone `America/Sao_Paulo`, weekdays `0 0 * *
 | `b3_bulletin_price_report`             | PriceReport BVBG.086.01                           | `PR`          | daily                    |
 | `b3_bulletin_price_report_derivatives` | Simplified Price Report – Derivatives BVBG.187.01 | `SPRD`        | daily                    |
 | `b3_bulletin_price_report_equities`    | Simplified Price Report – Equities BVBG.186.01    | `SPRE`        | daily                    |
+| `b3_daily_liquidity_limits`            | Daily Liquidity Limit (`LLD.txt`)                 | `LD`          | daily                    |
+| `b3_daily_liquidity_limits_other`      | Daily Liquidity Limit – Other (`LLDAdicional.txt`) | `LA`         | daily                    |
 | `b3_fee_daily_unit_cost`               | Fee Daily Unit Cost BVBG.044.01                   | `DI`          | daily                    |
 | `b3_fee_unit_cost`                     | Fee Unit Cost BVBG.043.01                         | `UN`          | monthly                  |
+| `b3_fee_variables`                     | Fee Variables BVBG.024.01                         | `VA`          | monthly                  |
 | `b3_history`                           | COTAHIST_D / _M / _A (equities history)           | — (fixed URL) | daily + monthly + yearly |
 | `b3_indicator_instruments`             | Indicator Instruments BVBG.029.02                 | `II`          | daily                    |
 | `b3_instruments`                       | Instruments BVBG.028.02                           | `IN`          | daily                    |
+| `b3_primitive_risk_factors`            | Primitive Risk Factors (`FatoresPrimitivosRisco.txt`) | `FP`      | daily                    |
+| `b3_risk_formulas`                     | Risk Formulas (`FormulasRisco.txt`)               | `FR`          | daily                    |
 | `b3_standardized_instrument_groups`    | Standardized Instrument Groups                    | `AI`          | daily                    |
 
 Notes:
@@ -54,6 +59,10 @@ Notes:
   helper (one BVBG file per zip).
 - `b3_instruments` `split_report()` splits each XML into standalone files at
   `BizGrp` boundaries before parsing.
+- Text reports (`LD`, `LA`, `FP`, `FR`) are `;`-delimited with a `dd/mm/yyyy`
+  header line; parsed with DuckDB `read_csv(auto_detect := false)`, `trad_dt`
+  taken from the header. Monthly fee files (`UN`, `VA`) are published on the
+  first business day of the following month.
 - Assets emit rich output metadata (row counts, avg price, markdown previews /
   top-N tables) to the Dagster UI.
 
@@ -76,7 +85,7 @@ Notes:
 ├── .env                         # MinIO + Grafana credentials (gitignored)
 ├── pyproject.toml               # deps + [tool.dg] config (root_module=ndagster)
 ├── grafana/
-│   ├── dashboards/              # 10 JSON dashboards (one per b3_* group)
+│   ├── dashboards/              # 15 JSON dashboards (one per b3_* group)
 │   └── provisioning/
 │       ├── datasources/duckdb.yaml   # DuckDB datasource, minio secret setup
 │       └── dashboards/dashboards.yaml # auto-import dashboards into B3 folder
@@ -84,7 +93,7 @@ Notes:
 │   ├── definitions.py           # @definitions entrypoint → load_from_defs_folder
 │   └── defs/
 │       ├── resources.py         # IO managers (parquet + raw zip)
-│       └── assets_b3_*.py       # 10 asset modules (see table above)
+│       └── assets_b3_*.py       # 15 asset modules (see table above)
 └── tests/                       # empty (__init__.py only)
 ```
 
