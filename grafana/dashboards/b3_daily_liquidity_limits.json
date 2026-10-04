@@ -25,41 +25,44 @@
   "templating": {
     "list": [
       {
+        "name": "asset_class",
+        "label": "Asset class",
+        "type": "custom",
+        "query": "Stocks : stock, BDRs : bdr, ETFs / funds / units : fund_unit, Futures : future, Equity derivatives : equity_derivative, Odd lot : odd_lot, Rights / receipts : right_receipt, Government / foreign : gov_foreign, Other : other",
+        "current": { "text": ["Stocks"], "value": ["stock"] },
+        "multi": true,
+        "includeAll": false
+      },
+      {
         "name": "ticker",
         "label": "Ticker",
         "type": "query",
         "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\nWHERE NOT is_unlimited\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "definition": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\nWHERE NOT is_unlimited\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "query": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT ticker\nFROM d\nWHERE asset_class IN ($asset_class)\nGROUP BY ticker\nORDER BY max(liquidity_limit) DESC\nLIMIT 1000",
+        "definition": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT ticker\nFROM d\nWHERE asset_class IN ($asset_class)\nGROUP BY ticker\nORDER BY max(liquidity_limit) DESC\nLIMIT 1000",
         "refresh": 2,
+        "sort": 0,
+        "current": {
+          "selected": true,
+          "text": ["PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "ABEV3", "B3SA3", "ITSA4"],
+          "value": ["PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "ABEV3", "B3SA3", "ITSA4"]
+        },
         "multi": true,
         "includeAll": false,
-        "current": { "selected": true, "text": ["PETR4", "VALE3"], "value": ["PETR4", "VALE3"] },
-        "sort": 0
+        "allowCustomValue": true
       }
     ]
   },
   "panels": [
     {
       "id": 1,
-      "type": "timeseries",
-      "title": "Daily liquidity limit per ticker",
-      "description": "Daily liquidity limit (quantity) per selected ticker; unlimited values hidden.",
-      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 9 },
-      "interval": "1d",
+      "type": "stat",
+      "title": "Instruments",
+      "description": "Number of selected tickers with a liquidity limit in the range.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "displayName": "${__field.labels.ticker}",
-          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
-        },
-        "overrides": []
-      },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "transformations": [
-        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
-      ],
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
@@ -67,25 +70,19 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, ticker, max(liquidity_limit)::BIGINT AS liquidity_limit\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND NOT is_unlimited\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, ticker"
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT count(DISTINCT ticker) AS instruments\nFROM d\nWHERE asset_class IN ($asset_class)"
         }
       ]
     },
     {
       "id": 2,
-      "type": "table",
-      "title": "Selected tickers: liquidity limit over the range",
-      "description": "First, latest, min and max limit per selected ticker over the range.",
-      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 8 },
+      "type": "stat",
+      "title": "Limit revisions",
+      "description": "Day-over-day limit changes across the selected tickers in the range.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          { "matcher": { "id": "byRegexp", "options": "_limit$" }, "properties": [{ "id": "unit", "value": "locale" }] },
-          { "matcher": { "id": "byName", "options": "range_change" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
-        ]
-      },
-      "options": { "showHeader": true },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
@@ -93,25 +90,19 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND NOT is_unlimited\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker,\n  instrument_id::VARCHAR AS instrument_id,\n  count(*) AS days,\n  max(trad_dt) AS latest_dt,\n  arg_min(liquidity_limit, trad_dt) AS first_limit,\n  arg_max(liquidity_limit, trad_dt) AS latest_limit,\n  min(liquidity_limit) AS min_limit,\n  max(liquidity_limit) AS max_limit,\n  (arg_max(liquidity_limit, trad_dt) / nullif(arg_min(liquidity_limit, trad_dt), 0) - 1)::DOUBLE AS range_change\nFROM d\nGROUP BY ticker, instrument_id\nORDER BY ticker"
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND ticker IN ($ticker)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  GROUP BY ALL\n),\nchanges AS (\n  SELECT\n    trad_dt,\n    ticker,\n    asset_class,\n    lag(liquidity_limit) OVER (PARTITION BY ticker ORDER BY trad_dt) AS prev_limit,\n    liquidity_limit\n  FROM d\n  WHERE asset_class IN ($asset_class)\n)\nSELECT count(*) AS revisions\nFROM changes\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND liquidity_limit <> prev_limit"
         }
       ]
     },
     {
       "id": 3,
-      "type": "table",
-      "title": "Largest limit changes vs previous day (latest day in range)",
-      "description": "Top 50 limit changes vs the previous day; ignores the ticker filter.",
-      "gridPos": { "x": 0, "y": 17, "w": 12, "h": 12 },
+      "type": "stat",
+      "title": "Average limit change in range",
+      "description": "Mean of the selected tickers' limit change from first to last day in the range.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          { "matcher": { "id": "byRegexp", "options": "_limit$" }, "properties": [{ "id": "unit", "value": "locale" }] },
-          { "matcher": { "id": "byName", "options": "limit_change" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
-        ]
-      },
-      "options": { "showHeader": true },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
@@ -119,21 +110,214 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\ncur AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d)\n),\nprv AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d WHERE trad_dt < (SELECT max(trad_dt) FROM d))\n)\nSELECT c.ticker,\n  c.instrument_id::VARCHAR AS instrument_id,\n  p.liquidity_limit AS prev_limit,\n  c.liquidity_limit AS latest_limit,\n  (c.liquidity_limit / nullif(p.liquidity_limit, 0) - 1)::DOUBLE AS limit_change\nFROM cur c\nJOIN prv p ON c.instrument_id = p.instrument_id\nWHERE c.liquidity_limit <> p.liquidity_limit\nORDER BY abs(c.liquidity_limit / nullif(p.liquidity_limit, 0) - 1) DESC NULLS FIRST, c.ticker\nLIMIT 50"
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\nr AS (\n  SELECT ticker, arg_max(liquidity_limit, trad_dt) / nullif(arg_min(liquidity_limit, trad_dt), 0) - 1 AS range_change\n  FROM d\n  WHERE asset_class IN ($asset_class)\n  GROUP BY ticker\n)\nSELECT avg(range_change)::DOUBLE AS avg_change\nFROM r"
         }
       ]
     },
     {
       "id": 4,
+      "type": "stat",
+      "title": "Latest trading day",
+      "description": "Most recent trading day with a limit for the selected tickers in the range.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT strftime(max(trad_dt), '%Y-%m-%d') AS latest\nFROM d\nWHERE asset_class IN ($asset_class)"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Liquidity limit",
+      "description": "Daily liquidity limit (quantity) per selected ticker; unlimited instruments are excluded.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, liquidity_limit\nFROM d\nWHERE asset_class IN ($asset_class)\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Limit change since start of range",
+      "description": "Limit relative to each ticker's first limit in the range, to compare tickers on one scale.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND ticker IN ($ticker)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT\n  trad_dt::TIMESTAMP AS time,\n  ticker,\n  liquidity_limit / nullif(first_value(liquidity_limit) OVER (PARTITION BY ticker ORDER BY trad_dt), 0) - 1 AS change\nFROM d\nWHERE asset_class IN ($asset_class)\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Daily limit change",
+      "description": "Limit vs the previous trading day's limit, per selected ticker.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["min", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND ticker IN ($ticker)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  GROUP BY ALL\n),\nchanges AS (\n  SELECT\n    trad_dt,\n    ticker,\n    asset_class,\n    lag(liquidity_limit) OVER (PARTITION BY ticker ORDER BY trad_dt) AS prev_limit,\n    liquidity_limit\n  FROM d\n  WHERE asset_class IN ($asset_class)\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, liquidity_limit / nullif(prev_limit, 0) - 1 AS change\nFROM changes\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND prev_limit IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Cumulative limit revisions",
+      "description": "Running count of days the limit changed since the start of the range, per selected ticker.",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND ticker IN ($ticker)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  GROUP BY ALL\n),\nchanges AS (\n  SELECT\n    trad_dt,\n    ticker,\n    asset_class,\n    lag(liquidity_limit) OVER (PARTITION BY ticker ORDER BY trad_dt) AS prev_limit,\n    liquidity_limit\n  FROM d\n  WHERE asset_class IN ($asset_class)\n)\nSELECT\n  trad_dt::TIMESTAMP AS time,\n  ticker,\n  sum((liquidity_limit <> prev_limit)::INTEGER) OVER (PARTITION BY ticker ORDER BY trad_dt) AS revisions\nFROM changes\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND prev_limit IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Days since last revision",
+      "description": "Calendar days since the limit last changed (up to one year back), per selected ticker.",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "decimals": 0,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND ticker IN ($ticker)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 365 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  GROUP BY ALL\n),\nchanges AS (\n  SELECT\n    trad_dt,\n    ticker,\n    liquidity_limit IS DISTINCT FROM lag(liquidity_limit) OVER (PARTITION BY ticker ORDER BY trad_dt) AS revised\n  FROM d\n  WHERE asset_class IN ($asset_class)\n),\nmarked AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(CASE WHEN revised THEN trad_dt END) OVER (PARTITION BY ticker ORDER BY trad_dt) AS last_revision\n  FROM changes\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, date_diff('day', last_revision, trad_dt) AS days\nFROM marked\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 5,
       "type": "table",
-      "title": "Largest liquidity limits (latest day in range)",
-      "description": "Top 50 liquidity limits on the latest day; ignores the ticker filter.",
-      "gridPos": { "x": 12, "y": 17, "w": 12, "h": 12 },
+      "title": "Selected tickers (range summary)",
+      "description": "First, latest, min and max limit, change and revisions per selected ticker over the range.",
+      "gridPos": { "x": 0, "y": 32, "w": 24, "h": 9 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {},
         "overrides": [
-          { "matcher": { "id": "byName", "options": "liquidity_limit" }, "properties": [{ "id": "unit", "value": "locale" }] }
+          { "matcher": { "id": "byRegexp", "options": "_limit$" }, "properties": [{ "id": "unit", "value": "locale" }] },
+          {
+            "matcher": { "id": "byName", "options": "range_change" },
+            "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }]
+          }
         ]
       },
       "options": { "showHeader": true },
@@ -144,7 +328,321 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker,\n  instrument_id::VARCHAR AS instrument_id,\n  liquidity_limit\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY liquidity_limit DESC, ticker\nLIMIT 50"
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND ticker IN ($ticker)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  GROUP BY ALL\n),\nchanges AS (\n  SELECT\n    trad_dt,\n    ticker,\n    asset_class,\n    lag(liquidity_limit) OVER (PARTITION BY ticker ORDER BY trad_dt) AS prev_limit,\n    liquidity_limit\n  FROM d\n  WHERE asset_class IN ($asset_class)\n),\nranged AS (\n  SELECT *\n  FROM changes\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\nids AS (\n  SELECT ticker, string_agg(DISTINCT instrument_id::VARCHAR, ', ') AS instrument_ids\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND NOT is_unlimited\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ticker\n)\nSELECT\n  r.ticker,\n  any_value(r.asset_class) AS asset_class,\n  any_value(i.instrument_ids) AS instrument_ids,\n  count(*) AS days,\n  max(r.trad_dt) AS latest_dt,\n  arg_min(r.liquidity_limit, r.trad_dt) AS first_limit,\n  arg_max(r.liquidity_limit, r.trad_dt) AS latest_limit,\n  min(r.liquidity_limit) AS min_limit,\n  max(r.liquidity_limit) AS max_limit,\n  (arg_max(r.liquidity_limit, r.trad_dt) / nullif(arg_min(r.liquidity_limit, r.trad_dt), 0) - 1)::DOUBLE AS range_change,\n  count(*) FILTER (WHERE r.liquidity_limit <> r.prev_limit) AS revisions,\n  max(r.trad_dt) FILTER (WHERE r.liquidity_limit <> r.prev_limit) AS last_revision\nFROM ranged r\nLEFT JOIN ids i ON i.ticker = r.ticker\nGROUP BY r.ticker\nORDER BY latest_limit DESC"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Instruments with a limit, stacked by asset class",
+      "description": "Daily count of instruments with a finite limit per selected asset class; ignores the ticker filter.",
+      "gridPos": { "x": 0, "y": 41, "w": 8, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "displayName": "${__field.labels.asset_class}",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "showPoints": "never",
+            "fillOpacity": 60,
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset_class"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT trad_dt::TIMESTAMP AS time, asset_class, count(*) AS instruments\nFROM d\nWHERE asset_class IN ($asset_class)\nGROUP BY ALL\nORDER BY time, asset_class"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Share of instruments with a limit",
+      "description": "Instruments with a finite limit over all listed instruments, per selected asset class; ignores the ticker filter.",
+      "gridPos": { "x": 8, "y": 41, "w": 8, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "min": 0,
+          "max": 1,
+          "displayName": "${__field.labels.asset_class}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset_class"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    is_unlimited,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trad_dt::TIMESTAMP AS time, asset_class, avg((NOT is_unlimited)::INTEGER) AS limited_share\nFROM d\nWHERE asset_class IN ($asset_class)\nGROUP BY ALL\nORDER BY time, asset_class"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Median limit per asset class",
+      "description": "Daily median finite limit per selected asset class, a gauge of overall limit levels; ignores the ticker filter.",
+      "gridPos": { "x": 16, "y": 41, "w": 8, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "displayName": "${__field.labels.asset_class}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset_class"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT trad_dt::TIMESTAMP AS time, asset_class, median(liquidity_limit)::DOUBLE AS median_limit\nFROM d\nWHERE asset_class IN ($asset_class)\nGROUP BY ALL\nORDER BY time, asset_class"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Limit revisions per day",
+      "description": "Instruments whose limit rose or fell vs the previous day in the selected asset classes, stacked; ignores the ticker filter.",
+      "gridPos": { "x": 0, "y": 50, "w": 24, "h": 8 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "showPoints": "never",
+            "fillOpacity": 60,
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Increases" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Decreases" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  GROUP BY ALL\n),\nchanges AS (\n  SELECT\n    trad_dt,\n    liquidity_limit,\n    lag(liquidity_limit) OVER (PARTITION BY ticker ORDER BY trad_dt) AS prev_limit\n  FROM d\n  WHERE asset_class IN ($asset_class)\n)\nSELECT\n  trad_dt::TIMESTAMP AS time,\n  count(*) FILTER (WHERE liquidity_limit > prev_limit) AS \"Increases\",\n  count(*) FILTER (WHERE liquidity_limit < prev_limit) AS \"Decreases\"\nFROM changes\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND prev_limit IS NOT NULL\nGROUP BY time\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Biggest limit increases (limit ≥ 10k)",
+      "description": "Top 15 limit increases from first to last day among limits of at least 10k in the selected asset classes; ignores the ticker filter.",
+      "gridPos": { "x": 0, "y": 58, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "_limit$" }, "properties": [{ "id": "unit", "value": "locale" }] },
+          {
+            "matcher": { "id": "byName", "options": "range_change" },
+            "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\nr AS (\n  SELECT\n    ticker,\n    any_value(asset_class) AS asset_class,\n    arg_min(liquidity_limit, trad_dt) AS first_limit,\n    arg_max(liquidity_limit, trad_dt) AS latest_limit\n  FROM d\n  WHERE asset_class IN ($asset_class)\n  GROUP BY ticker\n)\nSELECT *, (latest_limit / first_limit - 1)::DOUBLE AS range_change\nFROM r\nWHERE first_limit > 0\n  AND latest_limit <> first_limit\n  AND greatest(first_limit, latest_limit) >= 10000\nORDER BY range_change DESC, ticker\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Biggest limit decreases (limit ≥ 10k)",
+      "description": "Top 15 limit decreases from first to last day among limits of at least 10k in the selected asset classes; ignores the ticker filter.",
+      "gridPos": { "x": 12, "y": 58, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "_limit$" }, "properties": [{ "id": "unit", "value": "locale" }] },
+          {
+            "matcher": { "id": "byName", "options": "range_change" },
+            "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\nr AS (\n  SELECT\n    ticker,\n    any_value(asset_class) AS asset_class,\n    arg_min(liquidity_limit, trad_dt) AS first_limit,\n    arg_max(liquidity_limit, trad_dt) AS latest_limit\n  FROM d\n  WHERE asset_class IN ($asset_class)\n  GROUP BY ticker\n)\nSELECT *, (latest_limit / first_limit - 1)::DOUBLE AS range_change\nFROM r\nWHERE first_limit > 0\n  AND latest_limit <> first_limit\n  AND greatest(first_limit, latest_limit) >= 10000\nORDER BY range_change ASC, ticker\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Largest liquidity limits (latest day in range)",
+      "description": "Top 20 limits on the latest day in the selected asset classes; ignores the ticker filter.",
+      "gridPos": { "x": 0, "y": 70, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [{ "matcher": { "id": "byName", "options": "liquidity_limit" }, "properties": [{ "id": "unit", "value": "locale" }] }]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT ticker, asset_class, liquidity_limit\nFROM d\nWHERE asset_class IN ($asset_class)\n  AND trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY liquidity_limit DESC, ticker\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Most recent limit revisions",
+      "description": "Latest 50 day-over-day limit changes in the selected asset classes; ignores the ticker filter.",
+      "gridPos": { "x": 12, "y": 70, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "_limit$" }, "properties": [{ "id": "unit", "value": "locale" }] },
+          {
+            "matcher": { "id": "byName", "options": "change" },
+            "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  GROUP BY ALL\n),\nchanges AS (\n  SELECT\n    trad_dt,\n    ticker,\n    asset_class,\n    lag(liquidity_limit) OVER (PARTITION BY ticker ORDER BY trad_dt) AS prev_limit,\n    liquidity_limit\n  FROM d\n  WHERE asset_class IN ($asset_class)\n)\nSELECT\n  trad_dt AS date,\n  ticker,\n  asset_class,\n  prev_limit,\n  liquidity_limit AS new_limit,\n  (liquidity_limit / nullif(prev_limit, 0) - 1)::DOUBLE AS change\nFROM changes\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND liquidity_limit <> prev_limit\nORDER BY date DESC, abs(liquidity_limit - prev_limit) DESC, ticker\nLIMIT 50"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Limit per ticker",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 82, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 21,
+          "type": "timeseries",
+          "title": "$ticker liquidity limit",
+          "description": "Daily limit with day-over-day change as bars on the right axis, one panel per selected ticker.",
+          "gridPos": { "x": 0, "y": 83, "w": 24, "h": 9 },
+          "repeat": "ticker",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "interval": "1d",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "locale",
+              "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 20 }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "Change" },
+                "properties": [
+                  { "id": "unit", "value": "percentunit" },
+                  { "id": "decimals", "value": 2 },
+                  { "id": "custom.drawStyle", "value": "bars" },
+                  { "id": "custom.fillOpacity", "value": 80 },
+                  { "id": "custom.axisPlacement", "value": "right" }
+                ]
+              }
+            ]
+          },
+          "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "WITH d AS (\n  SELECT\n    trad_dt,\n    ticker,\n    max(liquidity_limit) AS liquidity_limit,\n    CASE\n      WHEN ticker LIKE '% %' OR ticker LIKE 'NTN-%' OR regexp_matches(ticker, '^[A-Z]{1,5}$') THEN 'gov_foreign'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[0-9]{1,2}F$') THEN 'odd_lot'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}$')\n        AND try_cast(substr(ticker, 5, 2) AS INTEGER) BETWEEN year(trad_dt) % 100 AND year(trad_dt) % 100 + 30\n        AND (substr(ticker, 5, 2) NOT IN ('32', '33', '34', '35', '39') OR substr(ticker, 1, 3) IN ('DI1', 'DDI', 'OC1', 'DCO', 'DAP')) THEN 'future'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[3-8]$') THEN 'stock'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}3[1-59]$') THEN 'bdr'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}11$') OR ticker LIKE '%ETF11' THEN 'fund_unit'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}(9|1[02-9])$') THEN 'right_receipt'\n      WHEN regexp_matches(ticker, '^[A-Z0-9]{4}[A-X][0-9]{2,3}(W[1-5])?$') OR regexp_matches(ticker, '^[A-Z0-9]{4}[A-Z]{2}[0-9]{2}$') THEN 'equity_derivative'\n      ELSE 'other'\n    END AS asset_class\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND ticker = $ticker\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  GROUP BY ALL\n),\nchanges AS (\n  SELECT\n    trad_dt,\n    liquidity_limit,\n    liquidity_limit / nullif(lag(liquidity_limit) OVER (ORDER BY trad_dt), 0) - 1 AS change\n  FROM d\n  WHERE asset_class IN ($asset_class)\n)\nSELECT trad_dt::TIMESTAMP AS time, liquidity_limit AS \"Limit\", change AS \"Change\"\nFROM changes\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time"
+            }
+          ]
         }
       ]
     }
