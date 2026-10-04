@@ -25,46 +25,44 @@
   "templating": {
     "list": [
       {
+        "name": "kind",
+        "label": "Type",
+        "type": "custom",
+        "query": "Futures : future, Call options : call, Put options : put, Spreads & other : other",
+        "current": { "text": ["Futures"], "value": ["future"] },
+        "multi": true,
+        "includeAll": false
+      },
+      {
         "name": "ticker",
         "label": "Contract",
         "type": "query",
         "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND open_interest > 0\nORDER BY open_interest DESC",
-        "definition": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND open_interest > 0\nORDER BY open_interest DESC",
+        "query": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker\nFROM d\nWHERE kind IN ($kind)\nGROUP BY ticker\nORDER BY sum(regular_trades) DESC NULLS LAST, max(open_interest) DESC NULLS LAST\nLIMIT 1000",
+        "definition": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker\nFROM d\nWHERE kind IN ($kind)\nGROUP BY ticker\nORDER BY sum(regular_trades) DESC NULLS LAST, max(open_interest) DESC NULLS LAST\nLIMIT 1000",
         "refresh": 2,
+        "sort": 0,
+        "current": {
+          "selected": true,
+          "text": ["WINV26", "WDOX26", "DI1F27", "DI1F28", "DI1F29", "DI1F31", "INDV26", "BITV26"],
+          "value": ["WINV26", "WDOX26", "DI1F27", "DI1F28", "DI1F29", "DI1F31", "INDV26", "BITV26"]
+        },
         "multi": true,
         "includeAll": false,
-        "sort": 0
+        "allowCustomValue": true
       }
     ]
   },
   "panels": [
     {
       "id": 1,
-      "type": "timeseries",
-      "title": "$ticker settlement and open interest",
-      "description": "Daily settlement price and open interest per selected contract (repeats per contract).",
-      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 9 },
-      "repeat": "ticker",
-      "repeatDirection": "h",
-      "maxPerRow": 2,
-      "interval": "1d",
+      "type": "stat",
+      "title": "Regular trades",
+      "description": "Total regular trades of the selected contracts in the range.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": { "unit": "none" },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "open_interest" },
-            "properties": [
-              { "id": "unit", "value": "short" },
-              { "id": "custom.axisPlacement", "value": "right" },
-              { "id": "custom.drawStyle", "value": "bars" },
-              { "id": "custom.fillOpacity", "value": 40 }
-            ]
-          }
-        ]
-      },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
@@ -72,30 +70,333 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT\n  trad_dt::TIMESTAMP AS time,\n  adjusted_quote::DOUBLE AS settlement,\n  open_interest\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\nWHERE ticker = $ticker\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time"
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT sum(regular_trades)::BIGINT AS trades\nFROM d\nWHERE ticker IN ($ticker)\n  AND kind IN ($kind)"
         }
       ]
     },
     {
       "id": 2,
+      "type": "stat",
+      "title": "Open interest (latest day)",
+      "description": "Combined open interest of the selected contracts on the latest day in the range.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\ns AS (\n  SELECT *\n  FROM d\n  WHERE ticker IN ($ticker)\n    AND kind IN ($kind)\n)\nSELECT sum(open_interest)::BIGINT AS open_interest\nFROM s\nWHERE trad_dt = (SELECT max(trad_dt) FROM s)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Contracts traded",
+      "description": "How many of the selected contracts had at least one regular trade in the range.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(DISTINCT ticker) AS contracts\nFROM d\nWHERE ticker IN ($ticker)\n  AND kind IN ($kind)\n  AND regular_trades > 0"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Trading days",
+      "description": "Trading days with data for at least one selected contract.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(DISTINCT trad_dt) AS days\nFROM d\nWHERE ticker IN ($ticker)\n  AND kind IN ($kind)"
+        }
+      ]
+    },
+    {
+      "id": 10,
       "type": "timeseries",
-      "title": "Regular trades per day",
-      "description": "Regular trades per day for the selected contracts.",
-      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 8 },
+      "title": "Settlement price",
+      "description": "Daily settlement per selected contract, or last traded price when there is no settlement (options); DI1 settlements are PUs.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "none", "decimals": 2, "displayName": "${__field.labels.ticker}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, coalesce(adjusted_quote, last_price)::DOUBLE AS price\nFROM d\nWHERE ticker IN ($ticker)\n  AND kind IN ($kind)\n  AND coalesce(adjusted_quote, last_price) IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Return since start of range",
+      "description": "Settlement (or last price) relative to each contract's first value in the range, to compare contracts on one scale.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\ndaily AS (\n  SELECT trad_dt::TIMESTAMP AS time, ticker, coalesce(adjusted_quote, last_price)::DOUBLE AS price\n  FROM d\n  WHERE ticker IN ($ticker)\n    AND kind IN ($kind)\n    AND coalesce(adjusted_quote, last_price) IS NOT NULL\n)\nSELECT time, ticker, price / nullif(first_value(price) OVER (PARTITION BY ticker ORDER BY time), 0) - 1 AS return\nFROM daily\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Daily change",
+      "description": "Settlement vs the previous settlement (or last price vs the previous traded price), per selected contract.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nchanges AS (\n  SELECT\n    trad_dt::TIMESTAMP AS time,\n    ticker,\n    coalesce(\n      adjusted_quote::DOUBLE / nullif(prev_adjusted_quote::DOUBLE, 0),\n      coalesce(adjusted_quote, last_price)::DOUBLE / nullif(lag(coalesce(adjusted_quote, last_price)::DOUBLE) OVER (PARTITION BY ticker ORDER BY trad_dt), 0)\n    ) - 1 AS change\n  FROM d\n  WHERE kind IN ($kind)\n    AND coalesce(adjusted_quote, last_price) IS NOT NULL\n)\nSELECT time, ticker, change\nFROM changes\nWHERE $__timeFilter(time)\n  AND change IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Settlement rate",
+      "description": "Daily settlement rate per selected interest-rate contract (DI1, DAP, DDI and similar), in % per year.",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 3,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, adjusted_quote_rate::DOUBLE AS rate\nFROM d\nWHERE ticker IN ($ticker)\n  AND kind IN ($kind)\n  AND adjusted_quote_rate IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Daily rate change (bps)",
+      "description": "Settlement rate minus the previous settlement rate, in basis points, per selected interest-rate contract.",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "none", "decimals": 1, "displayName": "${__field.labels.ticker}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, (adjusted_quote_rate - prev_adjusted_quote_rate)::DOUBLE * 100 AS bps\nFROM d\nWHERE ticker IN ($ticker)\n  AND kind IN ($kind)\n  AND adjusted_quote_rate IS NOT NULL\n  AND prev_adjusted_quote_rate IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Open interest",
+      "description": "Daily open interest (open contracts) per selected contract.",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "displayName": "${__field.labels.ticker}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, open_interest\nFROM d\nWHERE ticker IN ($ticker)\n  AND kind IN ($kind)\n  AND open_interest IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Daily open interest change",
+      "description": "Open interest vs the previous trading day's open interest, per selected contract.",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "displayName": "${__field.labels.ticker}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nchanges AS (\n  SELECT\n    trad_dt::TIMESTAMP AS time,\n    ticker,\n    open_interest - lag(open_interest) OVER (PARTITION BY ticker ORDER BY trad_dt) AS change\n  FROM d\n  WHERE kind IN ($kind)\n    AND open_interest IS NOT NULL\n)\nSELECT time, ticker, change\nFROM changes\nWHERE $__timeFilter(time)\n  AND change IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Regular trades per contract",
+      "description": "Daily number of regular trades per selected contract.",
+      "gridPos": { "x": 0, "y": 41, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "displayName": "${__field.labels.ticker}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, regular_trades AS trades\nFROM d\nWHERE ticker IN ($ticker)\n  AND kind IN ($kind)\n  AND regular_trades IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Daily range (high vs low)",
+      "description": "Daily max over min traded price minus 1 per selected contract (DI1 trades in rates, so this is a rate range).",
+      "gridPos": { "x": 12, "y": 41, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, max_price::DOUBLE / nullif(min_price::DOUBLE, 0) - 1 AS range\nFROM d\nWHERE ticker IN ($ticker)\n  AND kind IN ($kind)\n  AND min_price > 0\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Total open interest, stacked by contract",
+      "description": "Daily open interest of the selected contracts, stacked so the top edge is the total.",
+      "gridPos": { "x": 0, "y": 50, "w": 12, "h": 10 },
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
           "displayName": "${__field.labels.ticker}",
-          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
         },
         "overrides": []
       },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "transformations": [
-        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
-      ],
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
       "targets": [
         {
           "refId": "A",
@@ -103,20 +404,137 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, ticker, sum(regular_trades)::BIGINT AS trades\nFROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, ticker"
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, open_interest\nFROM d\nWHERE ticker IN ($ticker)\n  AND kind IN ($kind)\n  AND open_interest IS NOT NULL\nORDER BY time, ticker"
         }
       ]
     },
     {
-      "id": 3,
-      "type": "table",
-      "title": "Largest open interest (latest day in range)",
-      "description": "Top 20 contracts by open interest on the latest day; ignores the contract filter.",
-      "gridPos": { "x": 0, "y": 17, "w": 24, "h": 12 },
+      "id": 20,
+      "type": "timeseries",
+      "title": "Total trades, stacked by contract",
+      "description": "Daily regular trades of the selected contracts, stacked so the top edge is the total.",
+      "gridPos": { "x": 12, "y": 50, "w": 12, "h": 10 },
+      "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
         "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trad_dt::TIMESTAMP AS time, ticker, regular_trades AS trades\nFROM d\nWHERE ticker IN ($ticker)\n  AND kind IN ($kind)\n  AND regular_trades IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Trades by underlying (top 10)",
+      "description": "Daily regular trades of the 10 most traded underlyings (first 3 ticker letters) in the selected types, stacked; ignores the contract filter.",
+      "gridPos": { "x": 0, "y": 60, "w": 12, "h": 10 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.underlying}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["underlying"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\nu AS (\n  SELECT left(ticker, 3) AS underlying, trad_dt, regular_trades\n  FROM d\n  WHERE kind IN ($kind)\n),\ntop AS (\n  SELECT underlying\n  FROM u\n  GROUP BY underlying\n  ORDER BY sum(regular_trades) DESC NULLS LAST\n  LIMIT 10\n)\nSELECT trad_dt::TIMESTAMP AS time, underlying, sum(regular_trades)::BIGINT AS trades\nFROM u\nWHERE underlying IN (SELECT underlying FROM top)\nGROUP BY ALL\nORDER BY time, underlying"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Open interest by underlying (top 10)",
+      "description": "Daily open interest of the 10 underlyings with the largest average open interest in the selected types, stacked; ignores the contract filter.",
+      "gridPos": { "x": 12, "y": 60, "w": 12, "h": 10 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.underlying}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["underlying"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\nu AS (\n  SELECT left(ticker, 3) AS underlying, trad_dt, sum(open_interest) AS open_interest\n  FROM d\n  WHERE kind IN ($kind)\n  GROUP BY ALL\n),\ntop AS (\n  SELECT underlying\n  FROM u\n  GROUP BY underlying\n  ORDER BY avg(open_interest) DESC NULLS LAST\n  LIMIT 10\n)\nSELECT trad_dt::TIMESTAMP AS time, underlying, open_interest::BIGINT AS open_interest\nFROM u\nWHERE underlying IN (SELECT underlying FROM top)\nORDER BY time, underlying"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Active contracts per day by type",
+      "description": "Daily count of listed contracts and of contracts with at least one regular trade, per selected type; ignores the contract filter.",
+      "gridPos": { "x": 0, "y": 70, "w": 24, "h": 8 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "displayName": "${__field.labels.series}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["series"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\nlabeled AS (\n  SELECT\n    trad_dt,\n    ticker,\n    regular_trades,\n    CASE kind WHEN 'future' THEN 'Futures' WHEN 'call' THEN 'Call options' WHEN 'put' THEN 'Put options' ELSE 'Spreads & other' END AS type\n  FROM d\n  WHERE kind IN ($kind)\n)\nSELECT trad_dt::TIMESTAMP AS time, type || ' traded' AS series, count(DISTINCT ticker) FILTER (WHERE regular_trades > 0) AS contracts\nFROM labeled\nGROUP BY ALL\nUNION ALL\nSELECT trad_dt::TIMESTAMP AS time, type || ' listed' AS series, count(DISTINCT ticker) AS contracts\nFROM labeled\nGROUP BY ALL\nORDER BY time, series"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "table",
+      "title": "Selected contracts (latest day in range)",
+      "description": "Prices, settlement, rate and open interest of the selected contracts on the latest day.",
+      "gridPos": { "x": 0, "y": 78, "w": 24, "h": 10 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "open_interest" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "trades" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "settlement_change" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] },
+          { "matcher": { "id": "byRegexp", "options": "rate|prev_rate" }, "properties": [{ "id": "unit", "value": "percent" }, { "id": "decimals", "value": 3 }] }
+        ]
       },
       "options": { "showHeader": true },
       "targets": [
@@ -126,7 +544,221 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker,\n  open_interest,\n  regular_trades AS trades,\n  last_price::DOUBLE AS last_price,\n  adjusted_quote::DOUBLE AS settlement,\n  prev_adjusted_quote::DOUBLE AS prev_settlement,\n  (adjusted_quote - prev_adjusted_quote)::DOUBLE AS settlement_change,\n  adjusted_quote_rate::DOUBLE AS settlement_rate,\n  adjusted_quote_ccy AS ccy\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY open_interest DESC NULLS LAST\nLIMIT 20"
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\ns AS (\n  SELECT *\n  FROM d\n  WHERE ticker IN ($ticker)\n    AND kind IN ($kind)\n)\nSELECT\n  ticker,\n  kind AS type,\n  open_interest,\n  regular_trades AS trades,\n  first_price::DOUBLE AS open,\n  max_price::DOUBLE AS high,\n  min_price::DOUBLE AS low,\n  avg_price::DOUBLE AS avg,\n  last_price::DOUBLE AS last,\n  adjusted_quote::DOUBLE AS settlement,\n  prev_adjusted_quote::DOUBLE AS prev_settlement,\n  adjusted_quote::DOUBLE / nullif(prev_adjusted_quote::DOUBLE, 0) - 1 AS settlement_change,\n  adjusted_quote_rate::DOUBLE AS rate,\n  prev_adjusted_quote_rate::DOUBLE AS prev_rate,\n  coalesce(adjusted_quote_ccy, price_ccy) AS ccy\nFROM s\nWHERE trad_dt = (SELECT max(trad_dt) FROM s)\nORDER BY open_interest DESC NULLS LAST"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "type": "table",
+      "title": "Top 20 by trades (range)",
+      "description": "Top 20 contracts by regular trades in the selected types; ignores the contract filter.",
+      "gridPos": { "x": 0, "y": 88, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "trades" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "days_traded" }, "properties": [{ "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "last_open_interest" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "period_return" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  ticker,\n  any_value(kind) AS type,\n  sum(regular_trades)::BIGINT AS trades,\n  count(regular_trades) AS days_traded,\n  arg_max(open_interest, trad_dt) AS last_open_interest,\n  arg_max(coalesce(adjusted_quote, last_price)::DOUBLE, trad_dt) AS last_price,\n  arg_max(coalesce(adjusted_quote, last_price)::DOUBLE, trad_dt) / nullif(arg_min(coalesce(adjusted_quote, last_price)::DOUBLE, trad_dt), 0) - 1 AS period_return\nFROM d\nWHERE kind IN ($kind)\nGROUP BY ticker\nORDER BY trades DESC NULLS LAST\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "table",
+      "title": "Largest open interest (latest day in range)",
+      "description": "Top 20 contracts by open interest on the latest day in the selected types; ignores the contract filter.",
+      "gridPos": { "x": 12, "y": 88, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "open_interest" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "trades" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "settlement_change" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] },
+          { "matcher": { "id": "byName", "options": "rate" }, "properties": [{ "id": "unit", "value": "percent" }, { "id": "decimals", "value": 3 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\ns AS (\n  SELECT *\n  FROM d\n  WHERE kind IN ($kind)\n)\nSELECT\n  ticker,\n  kind AS type,\n  open_interest,\n  regular_trades AS trades,\n  last_price::DOUBLE AS last,\n  adjusted_quote::DOUBLE AS settlement,\n  adjusted_quote::DOUBLE / nullif(prev_adjusted_quote::DOUBLE, 0) - 1 AS settlement_change,\n  adjusted_quote_rate::DOUBLE AS rate,\n  coalesce(adjusted_quote_ccy, price_ccy) AS ccy\nFROM s\nWHERE trad_dt = (SELECT max(trad_dt) FROM s)\nORDER BY open_interest DESC NULLS LAST\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "type": "table",
+      "title": "Top gainers (100+ trades)",
+      "description": "Top 15 settlement (or last price) returns over the range among contracts with 100+ regular trades in the selected types; ignores the contract filter.",
+      "gridPos": { "x": 0, "y": 100, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "trades" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "period_return" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\nr AS (\n  SELECT\n    ticker,\n    any_value(kind) AS type,\n    arg_min(coalesce(adjusted_quote, last_price)::DOUBLE, trad_dt) AS first_price,\n    arg_max(coalesce(adjusted_quote, last_price)::DOUBLE, trad_dt) AS last_price,\n    sum(regular_trades)::BIGINT AS trades\n  FROM d\n  WHERE kind IN ($kind)\n    AND ticker <> 'TT6Z99'\n  GROUP BY ticker\n  HAVING sum(regular_trades) >= 100\n)\nSELECT *, last_price / first_price - 1 AS period_return\nFROM r\nWHERE first_price > 0\n  AND last_price > 0\nORDER BY period_return DESC\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "type": "table",
+      "title": "Top losers (100+ trades)",
+      "description": "Bottom 15 settlement (or last price) returns over the range among contracts with 100+ regular trades in the selected types; ignores the contract filter.",
+      "gridPos": { "x": 8, "y": 100, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "trades" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "period_return" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\nr AS (\n  SELECT\n    ticker,\n    any_value(kind) AS type,\n    arg_min(coalesce(adjusted_quote, last_price)::DOUBLE, trad_dt) AS first_price,\n    arg_max(coalesce(adjusted_quote, last_price)::DOUBLE, trad_dt) AS last_price,\n    sum(regular_trades)::BIGINT AS trades\n  FROM d\n  WHERE kind IN ($kind)\n    AND ticker <> 'TT6Z99'\n  GROUP BY ticker\n  HAVING sum(regular_trades) >= 100\n)\nSELECT *, last_price / first_price - 1 AS period_return\nFROM r\nWHERE first_price > 0\n  AND last_price > 0\nORDER BY period_return ASC\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "type": "table",
+      "title": "Biggest open interest changes (range)",
+      "description": "Top 15 absolute open interest changes from the first to the last day in the range, in the selected types; ignores the contract filter.",
+      "gridPos": { "x": 16, "y": 100, "w": 8, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [{ "matcher": { "id": "byRegexp", "options": "first_oi|last_oi|oi_change" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "decimals", "value": 0 }] }]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n),\nr AS (\n  SELECT\n    ticker,\n    any_value(kind) AS type,\n    arg_min(open_interest, trad_dt) AS first_oi,\n    arg_max(open_interest, trad_dt) AS last_oi\n  FROM d\n  WHERE kind IN ($kind)\n  GROUP BY ticker\n)\nSELECT ticker, type, first_oi, last_oi, last_oi - first_oi AS oi_change\nFROM r\nWHERE first_oi IS NOT NULL\nORDER BY abs(last_oi - first_oi) DESC\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "Candles per contract",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 112, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 41,
+          "type": "candlestick",
+          "title": "$ticker daily candles",
+          "description": "Daily first, max, min and last traded prices with regular trades as volume, one panel per selected contract (traded days only).",
+          "gridPos": { "x": 0, "y": 113, "w": 24, "h": 10 },
+          "repeat": "ticker",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "interval": "1d",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": { "unit": "none", "decimals": 2 },
+            "overrides": [{ "matcher": { "id": "byName", "options": "volume" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "decimals", "value": 0 }] }]
+          },
+          "options": { "mode": "candles+volume", "candleStyle": "candles", "colorStrategy": "open-close", "includeAllFields": false, "legend": { "showLegend": false } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  trad_dt::TIMESTAMP AS time,\n  first_price::DOUBLE AS open,\n  max_price::DOUBLE AS high,\n  min_price::DOUBLE AS low,\n  last_price::DOUBLE AS close,\n  regular_trades AS volume\nFROM d\nWHERE ticker = $ticker\n  AND kind IN ($kind)\n  AND first_price IS NOT NULL\nORDER BY time"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "type": "row",
+      "title": "Settlement and open interest per contract",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 113, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 43,
+          "type": "timeseries",
+          "title": "$ticker settlement and open interest",
+          "description": "Daily settlement (or last price) with open interest as bars on the right axis, one panel per selected contract.",
+          "gridPos": { "x": 0, "y": 114, "w": 24, "h": 9 },
+          "repeat": "ticker",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "interval": "1d",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": { "unit": "none", "decimals": 2, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "open_interest" },
+                "properties": [
+                  { "id": "unit", "value": "short" },
+                  { "id": "decimals", "value": 0 },
+                  { "id": "custom.axisPlacement", "value": "right" },
+                  { "id": "custom.drawStyle", "value": "bars" },
+                  { "id": "custom.fillOpacity", "value": 40 }
+                ]
+              }
+            ]
+          },
+          "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "WITH d AS (\n  SELECT *,\n    CASE\n      WHEN NOT regexp_matches(ticker, '^[A-Z0-9]{3}[FGHJKMNQUVXZ][0-9]{2}([CP][0-9]+)?$') THEN 'other'\n      WHEN ticker[7:7] = 'C' THEN 'call'\n      WHEN ticker[7:7] = 'P' THEN 'put'\n      ELSE 'future'\n    END AS kind\n  FROM read_parquet('s3://uploads/b3_bulletin_price_report_derivatives/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  trad_dt::TIMESTAMP AS time,\n  coalesce(adjusted_quote, last_price)::DOUBLE AS settlement,\n  open_interest\nFROM d\nWHERE ticker = $ticker\n  AND kind IN ($kind)\nORDER BY time"
+            }
+          ]
         }
       ]
     }
