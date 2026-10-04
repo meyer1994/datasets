@@ -6,7 +6,7 @@
   "editable": true,
   "graphTooltip": 1,
   "schemaVersion": 39,
-  "time": { "from": "now-7d/d", "to": "now/d" },
+  "time": { "from": "now-30d/d", "to": "now/d" },
   "timepicker": {
     "refresh_intervals": [],
     "quick_ranges": [
@@ -25,34 +25,44 @@
   "templating": {
     "list": [
       {
-        "name": "index",
-        "label": "Index",
+        "name": "record_type",
+        "label": "Type",
+        "type": "custom",
+        "query": "Index : index, IOPV (ETF) : iopv, BDR reference price : bdr",
+        "current": { "text": ["Index"], "value": ["index"] },
+        "multi": true,
+        "includeAll": false
+      },
+      {
+        "name": "ticker",
+        "label": "Ticker",
         "type": "query",
         "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE record_type = 'index'\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "definition": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE record_type = 'index'\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "query": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE record_type IN ($record_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "definition": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE record_type IN ($record_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
         "refresh": 2,
+        "sort": 0,
+        "current": {
+          "selected": true,
+          "text": ["IBOV", "IBXX", "IBXL", "SMLL", "IDIV", "IFIX", "IMAT", "UTIL"],
+          "value": ["IBOV", "IBXX", "IBXL", "SMLL", "IDIV", "IFIX", "IMAT", "UTIL"]
+        },
         "multi": true,
         "includeAll": false,
-        "current": { "selected": true, "text": ["IBOV"], "value": ["IBOV"] },
-        "sort": 0
+        "allowCustomValue": true
       }
     ]
   },
   "panels": [
     {
       "id": 1,
-      "type": "timeseries",
-      "title": "$index close",
-      "description": "Daily closing value of each selected index (repeats per index).",
-      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
-      "repeat": "index",
-      "repeatDirection": "h",
-      "maxPerRow": 2,
-      "interval": "1d",
+      "type": "stat",
+      "title": "Instruments",
+      "description": "Number of selected tickers with data in the range.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0 }, "overrides": [] },
-      "options": { "legend": { "showLegend": false } },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
@@ -60,21 +70,329 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, closing_price::DOUBLE AS close\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE record_type = 'index'\n  AND ticker = $index\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time"
+          "rawSql": "SELECT count(DISTINCT ticker) AS instruments\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND record_type IN ($record_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)"
         }
       ]
     },
     {
       "id": 2,
-      "type": "table",
-      "title": "Indexes (latest day in range)",
-      "description": "Close, oscillation and rising/falling/stable shares for the selected indexes on the latest day.",
-      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 12 },
+      "type": "stat",
+      "title": "Trading days",
+      "description": "Number of trading days with data in the range.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT count(DISTINCT trad_dt) AS days\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND record_type IN ($record_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Average return in range",
+      "description": "Mean of the selected tickers' returns from first to last close in the range.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH r AS (\n  SELECT\n    ticker,\n    arg_max(coalesce(closing_price, reference_price), trad_dt)::DOUBLE\n      / nullif(arg_min(coalesce(closing_price, reference_price), trad_dt)::DOUBLE, 0) - 1 AS period_return\n  FROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ticker\n)\nSELECT avg(period_return) AS avg_return\nFROM r"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Latest trading day",
+      "description": "Most recent trading day with data for the selected tickers in the range.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT strftime(max(trad_dt), '%Y-%m-%d') AS latest\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND record_type IN ($record_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Close",
+      "description": "Daily close per selected ticker (index points, BRL for IOPVs and BDR reference prices).",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+      "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, ticker, coalesce(closing_price, reference_price)::DOUBLE AS close\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND record_type IN ($record_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Return since start of range",
+      "description": "Close relative to each ticker's first close in the range, to compare tickers on one scale.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH daily AS (\n  SELECT trad_dt::TIMESTAMP AS time, ticker, coalesce(closing_price, reference_price)::DOUBLE AS close\n  FROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT time, ticker, close / nullif(first_value(close) OVER (PARTITION BY ticker ORDER BY time), 0) - 1 AS return\nFROM daily\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Daily change",
+      "description": "Close vs the previous trading day's close, per selected ticker.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH daily AS (\n  SELECT trad_dt::TIMESTAMP AS time, ticker, coalesce(closing_price, reference_price)::DOUBLE AS close\n  FROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND record_type IN ($record_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\nchanges AS (\n  SELECT time, ticker, close / nullif(lag(close) OVER (PARTITION BY ticker ORDER BY time), 0) - 1 AS change\n  FROM daily\n)\nSELECT time, ticker, change\nFROM changes\nWHERE $__timeFilter(time)\n  AND change IS NOT NULL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Daily range (high vs low)",
+      "description": "Daily high over low minus 1 per selected ticker, a simple intraday volatility measure (indexes and IOPVs).",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, ticker, max_price::DOUBLE / nullif(min_price::DOUBLE, 0) - 1 AS range\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND record_type IN ($record_type)\n  AND max_price IS NOT NULL\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Breadth (share of rising constituents)",
+      "description": "Rising constituents over all constituents per selected index.",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 0,
+          "min": 0,
+          "max": 1,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, ticker, rising_shares / nullif(rising_shares + falling_shares + stable_shares, 0) AS rising_share\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND record_type = 'index'\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Opening gap",
+      "description": "Open vs the previous day's close per selected ticker (indexes and IOPVs).",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, ticker, opening_price::DOUBLE / nullif(prev_closing_price::DOUBLE, 0) - 1 AS gap\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND record_type IN ($record_type)\n  AND opening_price IS NOT NULL\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Intraday move (close vs open)",
+      "description": "Close vs the same day's open per selected ticker (indexes and IOPVs).",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, ticker, closing_price::DOUBLE / nullif(opening_price::DOUBLE, 0) - 1 AS move\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND record_type IN ($record_type)\n  AND opening_price IS NOT NULL\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Selected tickers (latest day in range)",
+      "description": "Prices, oscillation, settlement and breadth for the selected tickers on the latest day.",
+      "gridPos": { "x": 0, "y": 41, "w": 24, "h": 10 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 2 },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "oscillation" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+          { "matcher": { "id": "byName", "options": "oscillation" }, "properties": [{ "id": "unit", "value": "percentunit" }] },
+          { "matcher": { "id": "byRegexp", "options": "rising|falling|stable" }, "properties": [{ "id": "decimals", "value": 0 }] }
         ]
       },
       "options": { "showHeader": true },
@@ -85,7 +403,143 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\n  WHERE record_type = 'index'\n    AND ticker IN ($index)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker, description,\n  closing_price::DOUBLE AS closing_price,\n  oscillation::DOUBLE AS oscillation,\n  rising_shares, falling_shares, stable_shares\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY ticker"
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  ticker,\n  record_type AS type,\n  description,\n  opening_price::DOUBLE AS open,\n  max_price::DOUBLE AS high,\n  min_price::DOUBLE AS low,\n  coalesce(closing_price, reference_price)::DOUBLE AS close,\n  prev_closing_price::DOUBLE AS prev_close,\n  oscillation::DOUBLE AS oscillation,\n  settlement_value::DOUBLE AS settlement,\n  rising_shares AS rising,\n  falling_shares AS falling,\n  stable_shares AS stable\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY ticker"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Top gainers (range)",
+      "description": "Top 15 period returns in the selected types; ignores the ticker filter.",
+      "gridPos": { "x": 0, "y": 51, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "period_return" }, "properties": [{ "id": "unit", "value": "percentunit" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH r AS (\n  SELECT\n    ticker,\n    any_value(record_type) AS type,\n    any_value(description) AS description,\n    arg_min(coalesce(closing_price, reference_price), trad_dt)::DOUBLE AS first_close,\n    arg_max(coalesce(closing_price, reference_price), trad_dt)::DOUBLE AS last_close\n  FROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\n  WHERE record_type IN ($record_type)\n    AND ticker <> 'TFIX'\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ticker\n)\nSELECT *, last_close / nullif(first_close, 0) - 1 AS period_return\nFROM r\nWHERE first_close > 0\nORDER BY period_return DESC\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Top losers (range)",
+      "description": "Bottom 15 period returns in the selected types; ignores the ticker filter.",
+      "gridPos": { "x": 12, "y": 51, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "period_return" }, "properties": [{ "id": "unit", "value": "percentunit" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH r AS (\n  SELECT\n    ticker,\n    any_value(record_type) AS type,\n    any_value(description) AS description,\n    arg_min(coalesce(closing_price, reference_price), trad_dt)::DOUBLE AS first_close,\n    arg_max(coalesce(closing_price, reference_price), trad_dt)::DOUBLE AS last_close\n  FROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\n  WHERE record_type IN ($record_type)\n    AND ticker <> 'TFIX'\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ticker\n)\nSELECT *, last_close / nullif(first_close, 0) - 1 AS period_return\nFROM r\nWHERE first_close > 0\nORDER BY period_return ASC\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Candles per ticker",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 63, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 21,
+          "type": "candlestick",
+          "title": "$ticker daily candles",
+          "description": "Daily open, high, low and close, one panel per selected ticker (indexes and IOPVs).",
+          "gridPos": { "x": 0, "y": 64, "w": 24, "h": 10 },
+          "repeat": "ticker",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "interval": "1d",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": { "defaults": { "unit": "none", "decimals": 2 }, "overrides": [] },
+          "options": {
+            "mode": "candles",
+            "candleStyle": "candles",
+            "colorStrategy": "open-close",
+            "includeAllFields": false,
+            "legend": { "showLegend": false }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "SELECT\n  trad_dt::TIMESTAMP AS time,\n  opening_price::DOUBLE AS open,\n  max_price::DOUBLE AS high,\n  min_price::DOUBLE AS low,\n  closing_price::DOUBLE AS close\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE ticker = $ticker\n  AND record_type IN ($record_type)\n  AND opening_price IS NOT NULL\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "Breadth per index",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 64, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 23,
+          "type": "timeseries",
+          "title": "$ticker rising / stable / falling constituents",
+          "description": "Daily count of rising, stable and falling constituents, stacked so the top edge is the total, one panel per selected index.",
+          "gridPos": { "x": 0, "y": 65, "w": 24, "h": 9 },
+          "repeat": "ticker",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "interval": "1d",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+            },
+            "overrides": [
+              { "matcher": { "id": "byName", "options": "Rising" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+              { "matcher": { "id": "byName", "options": "Stable" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "gray" } }] },
+              { "matcher": { "id": "byName", "options": "Falling" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+            ]
+          },
+          "options": {
+            "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi", "sort": "none" }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "SELECT\n  trad_dt::TIMESTAMP AS time,\n  rising_shares AS \"Rising\",\n  stable_shares AS \"Stable\",\n  falling_shares AS \"Falling\"\nFROM read_parquet('s3://uploads/b3_bulletin_index_report/daily_parse/*.parquet')\nWHERE ticker = $ticker\n  AND record_type = 'index'\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY time"
+            }
+          ]
         }
       ]
     }
