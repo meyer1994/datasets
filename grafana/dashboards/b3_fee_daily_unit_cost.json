@@ -25,57 +25,53 @@
   "templating": {
     "list": [
       {
-        "name": "asset",
-        "label": "Asset",
-        "type": "query",
-        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "SELECT DISTINCT asset\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "definition": "SELECT DISTINCT asset\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "refresh": 2,
+        "name": "market",
+        "label": "Market",
+        "type": "custom",
+        "query": "Futures (2) : 2, Options on spot (3) : 3, Options on futures (4) : 4, Forward / swap (5) : 5",
+        "current": { "text": ["Futures (2)"], "value": ["2"] },
         "multi": true,
-        "includeAll": true,
-        "allValue": "'__all'",
-        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
-        "sort": 0
+        "includeAll": false
       },
       {
         "name": "day_trade",
         "label": "Day trade",
+        "type": "custom",
+        "query": "Regular : false, Day trade : true",
+        "current": { "text": ["Regular"], "value": ["false"] },
+        "multi": true,
+        "includeAll": false
+      },
+      {
+        "name": "asset",
+        "label": "Asset",
         "type": "query",
         "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "SELECT DISTINCT day_trade::VARCHAR AS day_trade\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "definition": "SELECT DISTINCT day_trade::VARCHAR AS day_trade\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "query": "SELECT asset\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE market IN ($market)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY asset\nORDER BY count(DISTINCT expiration_code) DESC, asset\nLIMIT 1000",
+        "definition": "SELECT asset\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE market IN ($market)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY asset\nORDER BY count(DISTINCT expiration_code) DESC, asset\nLIMIT 1000",
         "refresh": 2,
+        "sort": 0,
+        "current": {
+          "selected": true,
+          "text": ["DI1", "DDI", "FRC", "DAP", "OC1", "FRI", "BIT", "ETR"],
+          "value": ["DI1", "DDI", "FRC", "DAP", "OC1", "FRI", "BIT", "ETR"]
+        },
         "multi": true,
-        "includeAll": true,
-        "allValue": "'__all'",
-        "current": { "selected": true, "text": ["false"], "value": ["false"] },
-        "sort": 0
+        "includeAll": false,
+        "allowCustomValue": true
       }
     ]
   },
   "panels": [
     {
       "id": 1,
-      "type": "timeseries",
-      "title": "Average exchange fee per asset",
-      "description": "Daily average exchange fee (BRL) per asset.",
-      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 9 },
-      "interval": "1d",
+      "type": "stat",
+      "title": "Assets",
+      "description": "Number of selected assets with fee entries in the range.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "currencyBRL",
-          "decimals": 4,
-          "displayName": "${__field.labels.asset}",
-          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
-        },
-        "overrides": []
-      },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "transformations": [
-        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
-      ],
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
@@ -83,16 +79,76 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, avg(exchange_fee)::DOUBLE AS exchange_fee\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('__all' IN ($day_trade) OR day_trade::VARCHAR IN ($day_trade))\nGROUP BY ALL\nORDER BY time, asset"
+          "rawSql": "SELECT count(DISTINCT asset) AS assets\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND day_trade::VARCHAR IN ($day_trade)\n  AND $__timeFilter(trad_dt::TIMESTAMP)"
         }
       ]
     },
     {
       "id": 2,
+      "type": "stat",
+      "title": "Fee entries (latest day)",
+      "description": "Number of fee entries (contract, trade type and strategy leg combinations) for the selected assets on the latest day.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND market IN ($market)\n    AND day_trade::VARCHAR IN ($day_trade)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(*) AS entries\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Average total unit cost (latest day)",
+      "description": "Average exchange plus registration fee per contract across the selected assets on the latest day.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "currencyBRL", "decimals": 4 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, exchange_fee + registration_fee AS total_fee\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND market IN ($market)\n    AND day_trade::VARCHAR IN ($day_trade)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT avg(total_fee)::DOUBLE AS avg_total_fee\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Latest trading day",
+      "description": "Most recent trading day with fee entries for the selected assets in the range.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT strftime(max(trad_dt), '%Y-%m-%d') AS latest\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND day_trade::VARCHAR IN ($day_trade)\n  AND $__timeFilter(trad_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 10,
       "type": "timeseries",
-      "title": "Average registration fee per asset",
-      "description": "Daily average registration fee (BRL) per asset.",
-      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 9 },
+      "title": "Average total unit cost",
+      "description": "Daily average exchange plus registration fee per contract (BRL), per selected asset.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
@@ -104,7 +160,10 @@
         },
         "overrides": []
       },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
       "transformations": [
         { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
       ],
@@ -115,24 +174,34 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, avg(registration_fee)::DOUBLE AS registration_fee\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('__all' IN ($day_trade) OR day_trade::VARCHAR IN ($day_trade))\nGROUP BY ALL\nORDER BY time, asset"
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, avg(exchange_fee + registration_fee)::DOUBLE AS total_fee\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND day_trade::VARCHAR IN ($day_trade)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
         }
       ]
     },
     {
-      "id": 3,
-      "type": "table",
-      "title": "Unit cost summary by asset (latest day in range)",
-      "description": "Entry count and min/avg/max fees per asset on the latest day.",
-      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 10 },
+      "id": 11,
+      "type": "timeseries",
+      "title": "Average exchange fee",
+      "description": "Daily average exchange fee per contract (BRL), per selected asset.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          { "matcher": { "id": "byRegexp", "options": "_fee$" }, "properties": [{ "id": "unit", "value": "currencyBRL" }, { "id": "decimals", "value": 4 }] }
-        ]
+        "defaults": {
+          "unit": "currencyBRL",
+          "decimals": 4,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
       },
-      "options": { "showHeader": true },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
       "targets": [
         {
           "refId": "A",
@@ -140,16 +209,331 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($asset) OR asset IN ($asset))\n    AND ('__all' IN ($day_trade) OR day_trade::VARCHAR IN ($day_trade))\n)\nSELECT asset,\n  day_trade,\n  count(*) AS entries,\n  count(DISTINCT expiration_code) AS expirations,\n  min(exchange_fee)::DOUBLE AS min_exchange_fee,\n  avg(exchange_fee)::DOUBLE AS avg_exchange_fee,\n  max(exchange_fee)::DOUBLE AS max_exchange_fee,\n  min(registration_fee)::DOUBLE AS min_registration_fee,\n  avg(registration_fee)::DOUBLE AS avg_registration_fee,\n  max(registration_fee)::DOUBLE AS max_registration_fee\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nGROUP BY ALL\nORDER BY asset, day_trade"
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, avg(exchange_fee)::DOUBLE AS exchange_fee\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND day_trade::VARCHAR IN ($day_trade)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
         }
       ]
     },
     {
-      "id": 4,
+      "id": 12,
+      "type": "timeseries",
+      "title": "Average registration fee",
+      "description": "Daily average registration fee per contract (BRL), per selected asset.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyBRL",
+          "decimals": 4,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, avg(registration_fee)::DOUBLE AS registration_fee\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND day_trade::VARCHAR IN ($day_trade)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Fee change since start of range",
+      "description": "Average change of each contract's total fee vs its first fee in the range, per selected asset.",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH k AS (\n  SELECT\n    trad_dt,\n    asset,\n    (exchange_fee + registration_fee)::DOUBLE AS total_fee,\n    first_value((exchange_fee + registration_fee)::DOUBLE) OVER (\n      PARTITION BY market, asset, expiration_code, day_trade, trade_type, strategy_leg, bacen_auction\n      ORDER BY trad_dt\n    ) AS first_fee\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND market IN ($market)\n    AND day_trade::VARCHAR IN ($day_trade)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trad_dt::TIMESTAMP AS time, asset, avg(total_fee / nullif(first_fee, 0) - 1) AS change\nFROM k\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Daily fee change",
+      "description": "Average change of each contract's total fee vs the previous trading day, per selected asset.",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH k AS (\n  SELECT\n    trad_dt,\n    asset,\n    (exchange_fee + registration_fee)::DOUBLE AS total_fee,\n    lag((exchange_fee + registration_fee)::DOUBLE) OVER (\n      PARTITION BY market, asset, expiration_code, day_trade, trade_type, strategy_leg, bacen_auction\n      ORDER BY trad_dt\n    ) AS prev_fee\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND market IN ($market)\n    AND day_trade::VARCHAR IN ($day_trade)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n)\nSELECT trad_dt::TIMESTAMP AS time, asset, avg(total_fee / nullif(prev_fee, 0) - 1) AS change\nFROM k\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND prev_fee IS NOT NULL\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Fee spread across contracts",
+      "description": "Daily highest minus lowest total fee across the listed contracts of each selected asset (BRL).",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyBRL",
+          "decimals": 4,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT\n  trad_dt::TIMESTAMP AS time,\n  asset,\n  (max(exchange_fee + registration_fee) - min(exchange_fee + registration_fee))::DOUBLE AS spread\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND day_trade::VARCHAR IN ($day_trade)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Listed expirations",
+      "description": "Daily number of distinct expiration codes with a fee entry, per selected asset.",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, count(DISTINCT expiration_code) AS expirations\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND day_trade::VARCHAR IN ($day_trade)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Fee entries, stacked by asset",
+      "description": "Daily number of fee entries of the selected assets, stacked so the top edge is the total.",
+      "gridPos": { "x": 0, "y": 41, "w": 12, "h": 10 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, count(*) AS entries\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND market IN ($market)\n  AND day_trade::VARCHAR IN ($day_trade)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Fee changes vs previous day, stacked by asset",
+      "description": "Daily number of fee entries whose total fee differs from the previous trading day, stacked so the top edge is the total.",
+      "gridPos": { "x": 12, "y": 41, "w": 12, "h": 10 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH k AS (\n  SELECT\n    trad_dt,\n    asset,\n    exchange_fee + registration_fee AS total_fee,\n    lag(exchange_fee + registration_fee) OVER (\n      PARTITION BY market, asset, expiration_code, day_trade, trade_type, strategy_leg, bacen_auction\n      ORDER BY trad_dt\n    ) AS prev_fee\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND market IN ($market)\n    AND day_trade::VARCHAR IN ($day_trade)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n)\nSELECT trad_dt::TIMESTAMP AS time, asset, count(*) FILTER (WHERE total_fee <> prev_fee) AS changed\nFROM k\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND trad_dt > (SELECT min(trad_dt) FROM k)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Newly listed entries, stacked by asset",
+      "description": "Daily number of fee entries that did not exist on the previous trading day (new expirations), stacked so the top edge is the total.",
+      "gridPos": { "x": 0, "y": 51, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH k AS (\n  SELECT\n    trad_dt,\n    asset,\n    lag(trad_dt) OVER (\n      PARTITION BY market, asset, expiration_code, day_trade, trade_type, strategy_leg, bacen_auction\n      ORDER BY trad_dt\n    ) AS prev_dt\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND market IN ($market)\n    AND day_trade::VARCHAR IN ($day_trade)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n)\nSELECT trad_dt::TIMESTAMP AS time, asset, count(*) FILTER (WHERE prev_dt IS NULL) AS listed\nFROM k\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND trad_dt > (SELECT min(trad_dt) FROM k)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Day-trade discount vs regular",
+      "description": "Average day-trade total fee over the regular total fee of the same contract minus 1, per selected asset; ignores the day trade filter.",
+      "gridPos": { "x": 12, "y": 51, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH p AS (\n  SELECT\n    trad_dt,\n    asset,\n    (max(exchange_fee + registration_fee) FILTER (WHERE day_trade))::DOUBLE AS day_trade_fee,\n    (max(exchange_fee + registration_fee) FILTER (WHERE NOT day_trade))::DOUBLE AS regular_fee\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND market IN ($market)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY trad_dt, market, asset, expiration_code, trade_type, strategy_leg, bacen_auction\n)\nSELECT trad_dt::TIMESTAMP AS time, asset, avg(day_trade_fee / nullif(regular_fee, 0) - 1) AS discount\nFROM p\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 30,
       "type": "table",
-      "title": "Largest unit cost changes vs previous day (latest day in range)",
-      "description": "Top 50 fee changes vs the previous day.",
-      "gridPos": { "x": 0, "y": 19, "w": 24, "h": 12 },
+      "title": "Selected assets (latest day in range)",
+      "description": "Entry counts and min/avg/max fees per selected asset on the latest day, with the change in average total fee vs the previous day.",
+      "gridPos": { "x": 0, "y": 60, "w": 24, "h": 9 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {},
@@ -166,16 +550,16 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($asset) OR asset IN ($asset))\n    AND ('__all' IN ($day_trade) OR day_trade::VARCHAR IN ($day_trade))\n),\ncur AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d)\n),\nprv AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d WHERE trad_dt < (SELECT max(trad_dt) FROM d))\n)\nSELECT c.asset,\n  c.expiration_code,\n  c.market,\n  c.day_trade,\n  c.trade_type,\n  c.strategy_leg,\n  p.exchange_fee::DOUBLE AS prev_exchange_fee,\n  c.exchange_fee::DOUBLE AS exchange_fee,\n  (c.exchange_fee / nullif(p.exchange_fee, 0) - 1)::DOUBLE AS exchange_change,\n  p.registration_fee::DOUBLE AS prev_registration_fee,\n  c.registration_fee::DOUBLE AS registration_fee,\n  (c.registration_fee / nullif(p.registration_fee, 0) - 1)::DOUBLE AS registration_change\nFROM cur c\nJOIN prv p\n  ON c.market = p.market\n  AND c.asset = p.asset\n  AND c.expiration_code = p.expiration_code\n  AND c.day_trade = p.day_trade\n  AND c.trade_type = p.trade_type\n  AND c.strategy_leg IS NOT DISTINCT FROM p.strategy_leg\n  AND c.bacen_auction IS NOT DISTINCT FROM p.bacen_auction\nWHERE c.exchange_fee <> p.exchange_fee\n  OR c.registration_fee <> p.registration_fee\nORDER BY greatest(abs(coalesce(exchange_change, 0)), abs(coalesce(registration_change, 0))) DESC\nLIMIT 50"
+          "rawSql": "WITH d AS (\n  SELECT *, (exchange_fee + registration_fee)::DOUBLE AS total_fee\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND market IN ($market)\n    AND day_trade::VARCHAR IN ($day_trade)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\nlat AS (\n  SELECT max(trad_dt) AS cur FROM d\n),\nprv AS (\n  SELECT max(trad_dt) AS prev FROM d WHERE trad_dt < (SELECT cur FROM lat)\n)\nSELECT\n  asset,\n  string_agg(DISTINCT market, ', ') AS market,\n  count(*) FILTER (WHERE trad_dt = cur) AS entries,\n  count(DISTINCT expiration_code) FILTER (WHERE trad_dt = cur) AS expirations,\n  avg(exchange_fee) FILTER (WHERE trad_dt = cur)::DOUBLE AS avg_exchange_fee,\n  avg(registration_fee) FILTER (WHERE trad_dt = cur)::DOUBLE AS avg_registration_fee,\n  min(total_fee) FILTER (WHERE trad_dt = cur) AS min_total_fee,\n  avg(total_fee) FILTER (WHERE trad_dt = cur) AS avg_total_fee,\n  max(total_fee) FILTER (WHERE trad_dt = cur) AS max_total_fee,\n  avg(total_fee) FILTER (WHERE trad_dt = prev) AS prev_avg_total_fee,\n  avg_total_fee / nullif(prev_avg_total_fee, 0) - 1 AS avg_total_change\nFROM d, lat, prv\nWHERE trad_dt = cur OR trad_dt = prev\nGROUP BY asset\nHAVING count(*) FILTER (WHERE trad_dt = cur) > 0\nORDER BY asset"
         }
       ]
     },
     {
-      "id": 5,
+      "id": 31,
       "type": "table",
       "title": "Unit costs (latest day in range)",
-      "description": "All fee entries on the latest day.",
-      "gridPos": { "x": 0, "y": 31, "w": 24, "h": 14 },
+      "description": "All fee entries of the selected assets on the latest day.",
+      "gridPos": { "x": 0, "y": 69, "w": 24, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {},
@@ -191,7 +575,203 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n    AND ('__all' IN ($asset) OR asset IN ($asset))\n    AND ('__all' IN ($day_trade) OR day_trade::VARCHAR IN ($day_trade))\n)\nSELECT asset,\n  expiration_code,\n  market,\n  day_trade,\n  trade_type,\n  strategy_leg,\n  bacen_auction,\n  exchange_fee::DOUBLE AS exchange_fee,\n  registration_fee::DOUBLE AS registration_fee,\n  (exchange_fee + registration_fee)::DOUBLE AS total_fee\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY asset, expiration_code, day_trade, trade_type, strategy_leg\nLIMIT 2000"
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND market IN ($market)\n    AND day_trade::VARCHAR IN ($day_trade)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  asset,\n  expiration_code,\n  market,\n  day_trade,\n  trade_type,\n  strategy_leg,\n  bacen_auction,\n  exchange_fee::DOUBLE AS exchange_fee,\n  registration_fee::DOUBLE AS registration_fee,\n  (exchange_fee + registration_fee)::DOUBLE AS total_fee\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY asset, expiration_code, day_trade, trade_type, strategy_leg\nLIMIT 2000"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "table",
+      "title": "Biggest fee increases (range)",
+      "description": "Top 15 contracts by total fee increase from first to last day in the range, in the selected markets; ignores the asset filter.",
+      "gridPos": { "x": 0, "y": 81, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "_fee$" }, "properties": [{ "id": "unit", "value": "currencyBRL" }, { "id": "decimals", "value": 4 }] },
+          { "matcher": { "id": "byRegexp", "options": "_change$" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *, (exchange_fee + registration_fee)::DOUBLE AS total_fee\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE market IN ($market)\n    AND day_trade::VARCHAR IN ($day_trade)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\nc AS (\n  SELECT\n    asset,\n    expiration_code,\n    day_trade,\n    trade_type,\n    strategy_leg,\n    arg_min(total_fee, trad_dt) AS first_total_fee,\n    arg_max(total_fee, trad_dt) AS last_total_fee,\n    max(trad_dt) AS last_dt\n  FROM d\n  GROUP BY market, asset, expiration_code, day_trade, trade_type, strategy_leg, bacen_auction\n)\nSELECT\n  asset,\n  expiration_code,\n  day_trade,\n  trade_type,\n  strategy_leg,\n  first_total_fee,\n  last_total_fee,\n  last_total_fee - first_total_fee AS delta_fee,\n  last_total_fee / nullif(first_total_fee, 0) - 1 AS pct_change\nFROM c\nWHERE last_dt = (SELECT max(trad_dt) FROM d)\n  AND last_total_fee > first_total_fee\nORDER BY delta_fee DESC, pct_change DESC\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "type": "table",
+      "title": "Biggest fee decreases (range)",
+      "description": "Top 15 contracts by total fee decrease from first to last day in the range, in the selected markets; ignores the asset filter.",
+      "gridPos": { "x": 12, "y": 81, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "_fee$" }, "properties": [{ "id": "unit", "value": "currencyBRL" }, { "id": "decimals", "value": 4 }] },
+          { "matcher": { "id": "byRegexp", "options": "_change$" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *, (exchange_fee + registration_fee)::DOUBLE AS total_fee\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE market IN ($market)\n    AND day_trade::VARCHAR IN ($day_trade)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\nc AS (\n  SELECT\n    asset,\n    expiration_code,\n    day_trade,\n    trade_type,\n    strategy_leg,\n    arg_min(total_fee, trad_dt) AS first_total_fee,\n    arg_max(total_fee, trad_dt) AS last_total_fee,\n    max(trad_dt) AS last_dt\n  FROM d\n  GROUP BY market, asset, expiration_code, day_trade, trade_type, strategy_leg, bacen_auction\n)\nSELECT\n  asset,\n  expiration_code,\n  day_trade,\n  trade_type,\n  strategy_leg,\n  first_total_fee,\n  last_total_fee,\n  last_total_fee - first_total_fee AS delta_fee,\n  last_total_fee / nullif(first_total_fee, 0) - 1 AS pct_change\nFROM c\nWHERE last_dt = (SELECT max(trad_dt) FROM d)\n  AND last_total_fee < first_total_fee\nORDER BY delta_fee ASC, pct_change ASC\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "type": "table",
+      "title": "Most expensive assets (latest day in range)",
+      "description": "Top 20 assets by average total fee per contract on the latest day, in the selected markets; ignores the asset filter.",
+      "gridPos": { "x": 0, "y": 93, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "_fee$" }, "properties": [{ "id": "unit", "value": "currencyBRL" }, { "id": "decimals", "value": 4 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *, (exchange_fee + registration_fee)::DOUBLE AS total_fee\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE market IN ($market)\n    AND day_trade::VARCHAR IN ($day_trade)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  asset,\n  string_agg(DISTINCT market, ', ') AS market,\n  count(*) AS entries,\n  avg(exchange_fee)::DOUBLE AS avg_exchange_fee,\n  avg(registration_fee)::DOUBLE AS avg_registration_fee,\n  avg(total_fee) AS avg_total_fee,\n  max(total_fee) AS max_total_fee\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nGROUP BY asset\nORDER BY avg_total_fee DESC\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "type": "table",
+      "title": "Largest fee changes vs previous day (latest day in range)",
+      "description": "Top 50 total fee changes (BRL) vs the previous day on the latest day, in the selected markets; ignores the asset filter.",
+      "gridPos": { "x": 12, "y": 93, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "_fee$" }, "properties": [{ "id": "unit", "value": "currencyBRL" }, { "id": "decimals", "value": 4 }] },
+          { "matcher": { "id": "byRegexp", "options": "_change$" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *, (exchange_fee + registration_fee)::DOUBLE AS total_fee\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE market IN ($market)\n    AND day_trade::VARCHAR IN ($day_trade)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\ncur AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d)\n),\nprv AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d WHERE trad_dt < (SELECT max(trad_dt) FROM d))\n)\nSELECT\n  c.asset,\n  c.expiration_code,\n  c.day_trade,\n  c.trade_type,\n  c.strategy_leg,\n  p.total_fee AS prev_total_fee,\n  c.total_fee AS total_fee,\n  c.total_fee - p.total_fee AS delta_fee,\n  c.total_fee / nullif(p.total_fee, 0) - 1 AS pct_change\nFROM cur c\nJOIN prv p\n  ON c.market = p.market\n  AND c.asset = p.asset\n  AND c.expiration_code = p.expiration_code\n  AND c.day_trade = p.day_trade\n  AND c.trade_type = p.trade_type\n  AND c.strategy_leg IS NOT DISTINCT FROM p.strategy_leg\n  AND c.bacen_auction IS NOT DISTINCT FROM p.bacen_auction\nWHERE c.total_fee <> p.total_fee\nORDER BY abs(c.total_fee - p.total_fee) DESC\nLIMIT 50"
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "Fee band per asset",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 105, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 41,
+          "type": "timeseries",
+          "title": "$asset total fee across contracts",
+          "description": "Daily lowest, median, average and highest total fee across the listed contracts, one panel per selected asset.",
+          "gridPos": { "x": 0, "y": 106, "w": 24, "h": 9 },
+          "repeat": "asset",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "interval": "1d",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyBRL",
+              "decimals": 4,
+              "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "SELECT\n  trad_dt::TIMESTAMP AS time,\n  min(exchange_fee + registration_fee)::DOUBLE AS \"Min\",\n  median(exchange_fee + registration_fee)::DOUBLE AS \"Median\",\n  avg(exchange_fee + registration_fee)::DOUBLE AS \"Average\",\n  max(exchange_fee + registration_fee)::DOUBLE AS \"Max\"\nFROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\nWHERE asset = $asset\n  AND market IN ($market)\n  AND day_trade::VARCHAR IN ($day_trade)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY time\nORDER BY time"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "type": "row",
+      "title": "Fee curve per asset",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 106, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 43,
+          "type": "barchart",
+          "title": "$asset unit cost by expiration (latest day)",
+          "description": "Exchange and registration fee per expiration on the latest day (first 60 expirations, month-year codes in maturity order), one panel per selected asset.",
+          "gridPos": { "x": 0, "y": 107, "w": 24, "h": 9 },
+          "repeat": "asset",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyBRL",
+              "decimals": 4,
+              "custom": { "fillOpacity": 80, "lineWidth": 1 }
+            },
+            "overrides": []
+          },
+          "options": {
+            "orientation": "vertical",
+            "xField": "expiration_code",
+            "stacking": "normal",
+            "showValue": "never",
+            "barWidth": 0.8,
+            "groupWidth": 0.7,
+            "xTickLabelRotation": -45,
+            "xTickLabelSpacing": 0,
+            "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi", "sort": "none" }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_fee_daily_unit_cost/daily_parse/*.parquet')\n  WHERE asset = $asset\n    AND market IN ($market)\n    AND day_trade::VARCHAR IN ($day_trade)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  expiration_code,\n  avg(exchange_fee)::DOUBLE AS \"Exchange fee\",\n  avg(registration_fee)::DOUBLE AS \"Registration fee\"\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nGROUP BY expiration_code\nORDER BY\n  CASE WHEN regexp_full_match(expiration_code, '[FGHJKMNQUVXZ][0-9]{2}')\n    THEN make_date(2000 + right(expiration_code, 2)::INT, instr('FGHJKMNQUVXZ', left(expiration_code, 1)), 1)\n  END NULLS LAST,\n  expiration_code\nLIMIT 60"
+            }
+          ]
         }
       ]
     }
