@@ -27,61 +27,38 @@
       {
         "name": "record_type",
         "label": "Record type",
-        "type": "query",
-        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "SELECT DISTINCT record_type\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "definition": "SELECT DISTINCT record_type\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
-        "refresh": 2,
+        "type": "custom",
+        "query": "Option on equity : option_on_equity, Equity option exercise : equity_option_exercise, Equity : equity, Option on spot and future : option_on_spot_and_future, Derivative option exercise : derivative_option_exercise, Strategy : strategy, Equity forward : equity_forward, Future : future, Fixed income : fixed_income, Fixed income non-tradable : fixed_income_non_tradable, International bond : international_bond, National bond : national_bond, ADR : adr, Securities lending : securities_lending, OTC : otc, Cash : cash, Fund : fund",
+        "current": { "text": ["Option on equity"], "value": ["option_on_equity"] },
         "multi": true,
-        "includeAll": true,
-        "allValue": "'__all'",
-        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
-        "sort": 0
+        "includeAll": false
       },
       {
         "name": "asset",
         "label": "Asset",
         "type": "query",
         "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-        "query": "SELECT DISTINCT asset\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND ('__all' IN ($record_type) OR record_type IN ($record_type))\nORDER BY 1",
-        "definition": "SELECT DISTINCT asset\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND ('__all' IN ($record_type) OR record_type IN ($record_type))\nORDER BY 1",
+        "query": "SELECT asset\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE record_type IN ($record_type)\n  AND asset IS NOT NULL\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY asset\nORDER BY count(*) DESC\nLIMIT 1000",
+        "definition": "SELECT asset\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE record_type IN ($record_type)\n  AND asset IS NOT NULL\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY asset\nORDER BY count(*) DESC\nLIMIT 1000",
         "refresh": 2,
+        "sort": 0,
+        "current": { "selected": true, "text": ["PETR", "BOVA", "VALE", "ITUB", "BBDC", "BBAS", "WEGE", "PRIO"], "value": ["PETR", "BOVA", "VALE", "ITUB", "BBDC", "BBAS", "WEGE", "PRIO"] },
         "multi": true,
-        "includeAll": true,
-        "allValue": "'__all'",
-        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
-        "sort": 0
-      },
-      {
-        "name": "search",
-        "label": "Ticker starts with",
-        "type": "textbox",
-        "query": "",
-        "current": { "text": "", "value": "" }
+        "includeAll": false,
+        "allowCustomValue": true
       }
     ]
   },
   "panels": [
     {
       "id": 1,
-      "type": "timeseries",
-      "title": "Registered instruments per day by record type",
-      "description": "Registered instruments per day, stacked by record type.",
-      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 9 },
-      "interval": "1d",
+      "type": "stat",
+      "title": "Listed instruments",
+      "description": "Instruments of the selected assets and types on the latest day in the range.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "displayName": "${__field.labels.record_type}",
-          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal", "group": "A" } }
-        },
-        "overrides": []
-      },
-      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "transformations": [
-        { "id": "partitionByValues", "options": { "fields": ["record_type"], "keepFields": false, "naming": { "asLabels": true } } }
-      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
       "targets": [
         {
           "refId": "A",
@@ -89,16 +66,464 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, record_type, count(*) AS instruments\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE $__timeFilter(trad_dt::TIMESTAMP)\n  AND ('__all' IN ($record_type) OR record_type IN ($record_type))\n  AND ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('$search' = '' OR ticker ILIKE '$search%')\nGROUP BY ALL\nORDER BY time, record_type"
+          "rawSql": "WITH d AS (\n  SELECT trad_dt\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(*) AS instruments\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)"
         }
       ]
     },
     {
       "id": 2,
+      "type": "stat",
+      "title": "New listings in range",
+      "description": "Instruments on the latest day whose trading started within the range.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, trading_start_date\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(*) AS new_listings\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND $__timeFilter(trading_start_date::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Expiring in next 30 days",
+      "description": "Instruments on the latest day expiring within 30 days of it.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT trad_dt, expiration_date\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT count(*) AS expiring\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND expiration_date BETWEEN trad_dt AND trad_dt + INTERVAL 30 DAY"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Latest file day",
+      "description": "Most recent instruments file in the range for the selected assets.",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT strftime(max(trad_dt), '%Y-%m-%d') AS latest\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND record_type IN ($record_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Listed instruments per asset",
+      "description": "Daily number of registered instruments per selected asset.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "displayName": "${__field.labels.asset}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, count(*) AS instruments\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND record_type IN ($record_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Growth since start of range",
+      "description": "Instrument count relative to each asset's first day in the range.",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "decimals": 2, "displayName": "${__field.labels.asset}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH daily AS (\n  SELECT trad_dt::TIMESTAMP AS time, asset, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n)\nSELECT time, asset, instruments / first_value(instruments) OVER (PARTITION BY asset ORDER BY time) - 1 AS growth\nFROM daily\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Daily net change",
+      "description": "Instrument count vs the previous file day, per selected asset.",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "displayName": "${__field.labels.asset}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH daily AS (\n  SELECT trad_dt::TIMESTAMP AS time, asset, count(*) AS instruments\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND record_type IN ($record_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n  GROUP BY ALL\n),\nchanges AS (\n  SELECT time, asset, instruments - lag(instruments) OVER (PARTITION BY asset ORDER BY time) AS change\n  FROM daily\n)\nSELECT time, asset, change\nFROM changes\nWHERE $__timeFilter(time)\n  AND change IS NOT NULL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Added instruments per day",
+      "description": "Tickers present on the day but not on the previous file day, per selected asset.",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "displayName": "${__field.labels.asset}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT DISTINCT trad_dt, asset, coalesce(ticker, instrument_id::VARCHAR) AS ticker\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND record_type IN ($record_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\ndays AS (\n  SELECT trad_dt, lag(trad_dt) OVER (ORDER BY trad_dt) AS prev\n  FROM (SELECT DISTINCT trad_dt FROM d)\n),\nassets AS (\n  SELECT DISTINCT asset FROM d\n),\nchanges AS (\n  SELECT days.trad_dt, c.asset, count(*) AS n\n  FROM days\n  JOIN d c ON c.trad_dt = days.trad_dt\n  ANTI JOIN d p ON p.trad_dt = days.prev AND p.asset = c.asset AND p.ticker = c.ticker\n  GROUP BY ALL\n)\nSELECT days.trad_dt::TIMESTAMP AS time, assets.asset, coalesce(changes.n, 0) AS added\nFROM days\nCROSS JOIN assets\nLEFT JOIN changes ON changes.trad_dt = days.trad_dt AND changes.asset = assets.asset\nWHERE days.prev IS NOT NULL\n  AND $__timeFilter(days.trad_dt::TIMESTAMP)\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Removed instruments per day",
+      "description": "Tickers present on the previous file day but gone on the day (mostly expirations), per selected asset.",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "displayName": "${__field.labels.asset}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT DISTINCT trad_dt, asset, coalesce(ticker, instrument_id::VARCHAR) AS ticker\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND record_type IN ($record_type)\n    AND trad_dt::TIMESTAMP >= $__timeFrom()::TIMESTAMP - INTERVAL 10 DAY\n    AND trad_dt::TIMESTAMP <= $__timeTo()::TIMESTAMP\n),\ndays AS (\n  SELECT trad_dt, lag(trad_dt) OVER (ORDER BY trad_dt) AS prev\n  FROM (SELECT DISTINCT trad_dt FROM d)\n),\nassets AS (\n  SELECT DISTINCT asset FROM d\n),\nchanges AS (\n  SELECT days.trad_dt, p.asset, count(*) AS n\n  FROM days\n  JOIN d p ON p.trad_dt = days.prev\n  ANTI JOIN d c ON c.trad_dt = days.trad_dt AND c.asset = p.asset AND c.ticker = p.ticker\n  GROUP BY ALL\n)\nSELECT days.trad_dt::TIMESTAMP AS time, assets.asset, coalesce(changes.n, 0) AS removed\nFROM days\nCROSS JOIN assets\nLEFT JOIN changes ON changes.trad_dt = days.trad_dt AND changes.asset = assets.asset\nWHERE days.prev IS NOT NULL\n  AND $__timeFilter(days.trad_dt::TIMESTAMP)\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Underlying last price",
+      "description": "Last price of each asset's main underlying as published in the file (types with equity underlyings, e.g. options).",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "currencyBRL", "decimals": 2, "displayName": "${__field.labels.asset}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH o AS (\n  SELECT trad_dt, asset, underlying_instrument_id AS und, count(*) AS n\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n    AND underlying_instrument_id IS NOT NULL\n  GROUP BY ALL\n),\np AS (\n  SELECT trad_dt, instrument_id, ticker, last_price\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE last_price IS NOT NULL\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\nj AS (\n  SELECT o.trad_dt, o.asset, p.ticker, p.last_price::DOUBLE AS price, o.n\n  FROM o\n  JOIN p ON p.trad_dt = o.trad_dt AND p.instrument_id = o.und\n),\npick AS (\n  SELECT asset, arg_max(ticker, total) AS underlying\n  FROM (SELECT asset, ticker, sum(n) AS total FROM j GROUP BY ALL)\n  GROUP BY asset\n),\ndaily AS (\n  SELECT j.trad_dt::TIMESTAMP AS time, j.asset, any_value(j.price) AS price\n  FROM j\n  JOIN pick ON pick.asset = j.asset AND pick.underlying = j.ticker\n  GROUP BY ALL\n)\nSELECT time, asset, price\nFROM daily\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Underlying return since start of range",
+      "description": "Underlying last price relative to its first value in the range, per selected asset.",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "decimals": 2, "displayName": "${__field.labels.asset}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH o AS (\n  SELECT trad_dt, asset, underlying_instrument_id AS und, count(*) AS n\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n    AND underlying_instrument_id IS NOT NULL\n  GROUP BY ALL\n),\np AS (\n  SELECT trad_dt, instrument_id, ticker, last_price\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE last_price IS NOT NULL\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\nj AS (\n  SELECT o.trad_dt, o.asset, p.ticker, p.last_price::DOUBLE AS price, o.n\n  FROM o\n  JOIN p ON p.trad_dt = o.trad_dt AND p.instrument_id = o.und\n),\npick AS (\n  SELECT asset, arg_max(ticker, total) AS underlying\n  FROM (SELECT asset, ticker, sum(n) AS total FROM j GROUP BY ALL)\n  GROUP BY asset\n),\ndaily AS (\n  SELECT j.trad_dt::TIMESTAMP AS time, j.asset, any_value(j.price) AS price\n  FROM j\n  JOIN pick ON pick.asset = j.asset AND pick.underlying = j.ticker\n  GROUP BY ALL\n)\nSELECT time, asset, price / nullif(first_value(price) OVER (PARTITION BY asset ORDER BY time), 0) - 1 AS return\nFROM daily\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Instruments per expiration (chain depth)",
+      "description": "Average listed instruments per future expiration date, per selected asset.",
+      "gridPos": { "x": 0, "y": 41, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0, "displayName": "${__field.labels.asset}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, count(*) / count(DISTINCT expiration_date) AS per_expiration\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND record_type IN ($record_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\n  AND expiration_date >= trad_dt\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Expiration dates listed",
+      "description": "Distinct future expiration dates per selected asset.",
+      "gridPos": { "x": 12, "y": 41, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "displayName": "${__field.labels.asset}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, count(DISTINCT expiration_date) AS expirations\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND record_type IN ($record_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\n  AND expiration_date >= trad_dt\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Near-the-money share (strike within 10%)",
+      "description": "Share of options with strike within 10% of their underlying's last price, per selected asset.",
+      "gridPos": { "x": 0, "y": 50, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "min": 0,
+          "max": 1,
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH o AS (\n  SELECT trad_dt, asset, underlying_instrument_id, strike_price::DOUBLE AS strike\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n    AND strike_price IS NOT NULL\n),\np AS (\n  SELECT trad_dt, instrument_id, last_price::DOUBLE AS price\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE last_price > 0\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT o.trad_dt::TIMESTAMP AS time, o.asset, avg((abs(o.strike / p.price - 1) <= 0.1)::INT) AS near_money\nFROM o\nJOIN p ON p.trad_dt = o.trad_dt AND p.instrument_id = o.underlying_instrument_id\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Average days to expiration",
+      "description": "Mean days until expiration of the listed instruments per selected asset.",
+      "gridPos": { "x": 12, "y": 50, "w": 12, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": { "unit": "d", "decimals": 0, "displayName": "${__field.labels.asset}", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["mean"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, avg(expiration_date - trad_dt) AS days_to_expiration\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND record_type IN ($record_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\n  AND expiration_date >= trad_dt\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "Listed instruments, stacked by asset",
+      "description": "Daily instruments of the selected assets, stacked so the top edge is the total.",
+      "gridPos": { "x": 0, "y": 59, "w": 12, "h": 10 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.asset}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["asset"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, asset, count(*) AS instruments\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND record_type IN ($record_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, asset"
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "type": "timeseries",
+      "title": "Listed instruments by record type",
+      "description": "Daily instruments of the selected assets stacked by record type; ignores the type filter.",
+      "gridPos": { "x": 12, "y": 59, "w": 12, "h": 10 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.record_type}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [{ "id": "partitionByValues", "options": { "fields": ["record_type"], "keepFields": false, "naming": { "asLabels": true } } }],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, record_type, count(*) AS instruments\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE asset IN ($asset)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, record_type"
+        }
+      ]
+    },
+    {
+      "id": 5,
       "type": "table",
-      "title": "Upcoming expirations, next 30 days (latest day in range)",
-      "description": "Instruments expiring in the next 30 days, by date and asset.",
-      "gridPos": { "x": 0, "y": 9, "w": 14, "h": 12 },
+      "title": "Selected assets (latest day in range)",
+      "description": "Counts, expirations, strikes and underlying price per selected asset on the latest day.",
+      "gridPos": { "x": 0, "y": 69, "w": 24, "h": 9 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "underlying_price" }, "properties": [{ "id": "unit", "value": "currencyBRL" }, { "id": "decimals", "value": 2 }] },
+          { "matcher": { "id": "byName", "options": "min_strike" }, "properties": [{ "id": "unit", "value": "currencyBRL" }, { "id": "decimals", "value": 2 }] },
+          { "matcher": { "id": "byName", "options": "max_strike" }, "properties": [{ "id": "unit", "value": "currencyBRL" }, { "id": "decimals", "value": 2 }] },
+          { "matcher": { "id": "byName", "options": "instruments" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\nl AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d)\n),\np AS (\n  SELECT instrument_id, ticker, last_price::DOUBLE AS price\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE trad_dt = (SELECT max(trad_dt) FROM d)\n    AND last_price IS NOT NULL\n),\nu AS (\n  SELECT l.asset, p.ticker, any_value(p.price) AS price, count(*) AS n\n  FROM l\n  JOIN p ON p.instrument_id = l.underlying_instrument_id\n  GROUP BY ALL\n),\nup AS (\n  SELECT asset, arg_max(ticker, n) AS underlying, arg_max(price, n) AS underlying_price\n  FROM u\n  GROUP BY asset\n)\nSELECT\n  l.asset,\n  up.underlying,\n  up.underlying_price,\n  count(*) AS instruments,\n  count(*) FILTER (WHERE option_type = 'CALL') AS calls,\n  count(*) FILTER (WHERE option_type = 'PUTT') AS puts,\n  count(*) FILTER (WHERE trading_start_date = trad_dt) AS new_today,\n  count(DISTINCT expiration_date) FILTER (WHERE expiration_date >= trad_dt) AS expirations,\n  strftime(min(expiration_date) FILTER (WHERE expiration_date >= trad_dt), '%Y-%m-%d') AS next_expiration,\n  min(strike_price)::DOUBLE AS min_strike,\n  max(strike_price)::DOUBLE AS max_strike\nFROM l\nLEFT JOIN up ON up.asset = l.asset\nGROUP BY ALL\nORDER BY instruments DESC"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Most listed assets (latest day in range)",
+      "description": "Top 20 assets by instruments on the latest day in the selected types; ignores the asset filter.",
+      "gridPos": { "x": 0, "y": 78, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [{ "matcher": { "id": "byName", "options": "instruments" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } }] }] },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH c AS (\n  SELECT trad_dt, asset, count(*) AS n\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE record_type IN ($record_type)\n    AND asset IS NOT NULL\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\nb AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM c\n),\nl AS (\n  SELECT\n    asset,\n    count(*) AS instruments,\n    count(*) FILTER (WHERE option_type = 'CALL') AS calls,\n    count(*) FILTER (WHERE option_type = 'PUTT') AS puts,\n    count(DISTINCT expiration_date) FILTER (WHERE expiration_date >= trad_dt) AS expirations\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE record_type IN ($record_type)\n    AND trad_dt = (SELECT last_day FROM b)\n  GROUP BY asset\n)\nSELECT l.*, l.instruments - coalesce(c.n, 0) AS change_in_range\nFROM l\nLEFT JOIN c ON c.asset = l.asset AND c.trad_dt = (SELECT first_day FROM b)\nWHERE l.asset IS NOT NULL\nORDER BY instruments DESC\nLIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Biggest growers (range)",
+      "description": "Top 15 assets by net instruments added from the first to the last day in the range; ignores the asset filter.",
+      "gridPos": { "x": 12, "y": 78, "w": 6, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "options": { "showHeader": true },
@@ -109,21 +534,42 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT expiration_date::VARCHAR AS expiration_date,\n  asset,\n  record_type,\n  count(*) AS instruments,\n  count(*) FILTER (WHERE option_type = 'CALL') AS calls,\n  count(*) FILTER (WHERE option_type = 'PUTT') AS puts,\n  min(strike_price)::DOUBLE AS min_strike,\n  max(strike_price)::DOUBLE AS max_strike\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND expiration_date BETWEEN trad_dt AND trad_dt + INTERVAL 30 DAY\n  AND ('__all' IN ($record_type) OR record_type IN ($record_type))\n  AND ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('$search' = '' OR ticker ILIKE '$search%')\nGROUP BY ALL\nORDER BY expiration_date, instruments DESC\nLIMIT 500"
+          "rawSql": "WITH c AS (\n  SELECT trad_dt, asset, count(*) AS n\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE record_type IN ($record_type)\n    AND asset IS NOT NULL\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\nb AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM c\n),\nr AS (\n  SELECT\n    asset,\n    coalesce(sum(n) FILTER (WHERE trad_dt = (SELECT first_day FROM b)), 0)::BIGINT AS first_count,\n    coalesce(sum(n) FILTER (WHERE trad_dt = (SELECT last_day FROM b)), 0)::BIGINT AS last_count\n  FROM c\n  GROUP BY asset\n)\nSELECT asset, first_count, last_count, last_count - first_count AS change\nFROM r\nORDER BY change DESC\nLIMIT 15"
         }
       ]
     },
     {
-      "id": 3,
+      "id": 8,
       "type": "table",
-      "title": "Assets with most listed options (latest day in range)",
-      "description": "Top 20 underlyings by listed options on the latest day; ignores the filters.",
-      "gridPos": { "x": 14, "y": 9, "w": 10, "h": 12 },
+      "title": "Biggest shrinkers (range)",
+      "description": "Top 15 assets by net instruments removed from the first to the last day in the range; ignores the asset filter.",
+      "gridPos": { "x": 18, "y": 78, "w": 6, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH c AS (\n  SELECT trad_dt, asset, count(*) AS n\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE record_type IN ($record_type)\n    AND asset IS NOT NULL\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n  GROUP BY ALL\n),\nb AS (\n  SELECT min(trad_dt) AS first_day, max(trad_dt) AS last_day FROM c\n),\nr AS (\n  SELECT\n    asset,\n    coalesce(sum(n) FILTER (WHERE trad_dt = (SELECT first_day FROM b)), 0)::BIGINT AS first_count,\n    coalesce(sum(n) FILTER (WHERE trad_dt = (SELECT last_day FROM b)), 0)::BIGINT AS last_count\n  FROM c\n  GROUP BY asset\n)\nSELECT asset, first_count, last_count, last_count - first_count AS change\nFROM r\nORDER BY change ASC\nLIMIT 15"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Upcoming expirations, next 30 days (latest day in range)",
+      "description": "Instruments of the selected assets expiring within 30 days, by date and asset.",
+      "gridPos": { "x": 0, "y": 90, "w": 12, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
         "defaults": {},
         "overrides": [
-          { "matcher": { "id": "byName", "options": "options" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } }] }
+          { "matcher": { "id": "byName", "options": "min_strike" }, "properties": [{ "id": "unit", "value": "currencyBRL" }, { "id": "decimals", "value": 2 }] },
+          { "matcher": { "id": "byName", "options": "max_strike" }, "properties": [{ "id": "unit", "value": "currencyBRL" }, { "id": "decimals", "value": 2 }] }
         ]
       },
       "options": { "showHeader": true },
@@ -134,23 +580,18 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT asset,\n  count(*) AS options,\n  count(*) FILTER (WHERE option_type = 'CALL') AS calls,\n  count(*) FILTER (WHERE option_type = 'PUTT') AS puts,\n  count(DISTINCT expiration_date) AS expirations\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND option_type IS NOT NULL\nGROUP BY ALL\nORDER BY options DESC\nLIMIT 20"
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  strftime(expiration_date, '%Y-%m-%d') AS expiration_date,\n  asset,\n  record_type,\n  count(*) AS instruments,\n  count(*) FILTER (WHERE option_type = 'CALL') AS calls,\n  count(*) FILTER (WHERE option_type = 'PUTT') AS puts,\n  min(strike_price)::DOUBLE AS min_strike,\n  max(strike_price)::DOUBLE AS max_strike\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND expiration_date BETWEEN trad_dt AND trad_dt + INTERVAL 30 DAY\nGROUP BY ALL\nORDER BY expiration_date, instruments DESC\nLIMIT 500"
         }
       ]
     },
     {
-      "id": 4,
+      "id": 27,
       "type": "table",
-      "title": "New listings: trading start in range (latest day in range)",
-      "description": "Instruments whose trading started within the range.",
-      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 10 },
+      "title": "New listings in range (latest day in range)",
+      "description": "Instruments of the selected assets whose trading started within the range.",
+      "gridPos": { "x": 12, "y": 90, "w": 12, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "strike_price" }, "properties": [{ "id": "decimals", "value": 2 }] }
-        ]
-      },
+      "fieldConfig": { "defaults": {}, "overrides": [{ "matcher": { "id": "byName", "options": "strike" }, "properties": [{ "id": "unit", "value": "currencyBRL" }, { "id": "decimals", "value": 2 }] }] },
       "options": { "showHeader": true },
       "targets": [
         {
@@ -159,23 +600,18 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT trading_start_date::VARCHAR AS trading_start_date,\n  ticker,\n  record_type,\n  asset,\n  description,\n  isin,\n  expiration_date::VARCHAR AS expiration_date,\n  option_type,\n  strike_price::DOUBLE AS strike_price\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND $__timeFilter(trading_start_date::TIMESTAMP)\n  AND ('__all' IN ($record_type) OR record_type IN ($record_type))\n  AND ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('$search' = '' OR ticker ILIKE '$search%')\nORDER BY trading_start_date DESC, ticker\nLIMIT 1000"
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  strftime(trading_start_date, '%Y-%m-%d') AS trading_start,\n  ticker,\n  asset,\n  record_type,\n  strftime(expiration_date, '%Y-%m-%d') AS expiration,\n  option_type,\n  strike_price::DOUBLE AS strike\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND $__timeFilter(trading_start_date::TIMESTAMP)\nORDER BY trading_start_date DESC, ticker\nLIMIT 1000"
         }
       ]
     },
     {
-      "id": 5,
+      "id": 28,
       "type": "table",
       "title": "Instrument lookup (latest day in range)",
-      "description": "Registry details for each instrument on the latest day.",
-      "gridPos": { "x": 0, "y": 31, "w": 24, "h": 14 },
+      "description": "Registry details of the selected assets' instruments on the latest day.",
+      "gridPos": { "x": 0, "y": 102, "w": 24, "h": 14 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          { "matcher": { "id": "byRegexp", "options": "^(strike_price|last_price)$" }, "properties": [{ "id": "decimals", "value": 2 }] }
-        ]
-      },
+      "fieldConfig": { "defaults": {}, "overrides": [{ "matcher": { "id": "byRegexp", "options": "^(strike_price|last_price)$" }, "properties": [{ "id": "decimals", "value": 2 }] }] },
       "options": { "showHeader": true },
       "targets": [
         {
@@ -184,7 +620,100 @@
           "editorMode": "code",
           "rawQuery": true,
           "format": 1,
-          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker,\n  record_type,\n  security_category,\n  instrument_id,\n  isin,\n  asset,\n  description,\n  corporate_name,\n  specification_code,\n  governance,\n  cfi_code,\n  currency,\n  expiration_date::VARCHAR AS expiration_date,\n  option_type,\n  option_style,\n  strike_price::DOUBLE AS strike_price,\n  underlying_instrument_id,\n  contract_multiplier::DOUBLE AS contract_multiplier,\n  round_lot,\n  last_price::DOUBLE AS last_price,\n  trading_start_date::VARCHAR AS trading_start_date,\n  trading_end_date::VARCHAR AS trading_end_date\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND ('__all' IN ($record_type) OR record_type IN ($record_type))\n  AND ('__all' IN ($asset) OR asset IN ($asset))\n  AND ('$search' = '' OR ticker ILIKE '$search%')\nORDER BY ticker\nLIMIT 1000"
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset IN ($asset)\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  ticker,\n  record_type,\n  security_category,\n  instrument_id,\n  isin,\n  asset,\n  description,\n  corporate_name,\n  specification_code,\n  segment,\n  cfi_code,\n  currency,\n  strftime(expiration_date, '%Y-%m-%d') AS expiration_date,\n  option_type,\n  option_style,\n  strike_price::DOUBLE AS strike_price,\n  underlying_instrument_id,\n  contract_multiplier::DOUBLE AS contract_multiplier,\n  round_lot,\n  last_price::DOUBLE AS last_price,\n  strftime(trading_start_date, '%Y-%m-%d') AS trading_start_date,\n  strftime(trading_end_date, '%Y-%m-%d') AS trading_end_date\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY asset, expiration_date NULLS FIRST, ticker\nLIMIT 2000"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Expiration ladder per asset",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 116, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 31,
+          "type": "barchart",
+          "title": "$asset instruments by expiration (latest day)",
+          "description": "Calls, puts and other instruments per upcoming expiration date on the latest day, one panel per selected asset.",
+          "gridPos": { "x": 0, "y": 117, "w": 24, "h": 9 },
+          "repeat": "asset",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "custom": { "fillOpacity": 80, "lineWidth": 1 } },
+            "overrides": [
+              { "matcher": { "id": "byName", "options": "Calls" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+              { "matcher": { "id": "byName", "options": "Puts" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] },
+              { "matcher": { "id": "byName", "options": "Other" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "gray" } }] }
+            ]
+          },
+          "options": {
+            "xField": "expiration",
+            "orientation": "vertical",
+            "stacking": "normal",
+            "showValue": "never",
+            "xTickLabelRotation": -45,
+            "barWidth": 0.9,
+            "groupWidth": 0.7,
+            "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi", "sort": "none" }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "WITH d AS (\n  SELECT trad_dt, expiration_date, option_type\n  FROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\n  WHERE asset = $asset\n    AND record_type IN ($record_type)\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT\n  strftime(expiration_date, '%Y-%m-%d') AS expiration,\n  count(*) FILTER (WHERE option_type = 'CALL') AS \"Calls\",\n  count(*) FILTER (WHERE option_type = 'PUTT') AS \"Puts\",\n  count(*) FILTER (WHERE option_type IS NULL) AS \"Other\"\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\n  AND expiration_date >= trad_dt\nGROUP BY expiration_date\nORDER BY expiration_date\nLIMIT 24"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "row",
+      "title": "Listing mix per asset",
+      "collapsed": true,
+      "gridPos": { "x": 0, "y": 117, "w": 24, "h": 1 },
+      "panels": [
+        {
+          "id": 33,
+          "type": "timeseries",
+          "title": "$asset calls / puts / other",
+          "description": "Daily listed calls, puts and other instruments, stacked so the top edge is the total, one panel per selected asset.",
+          "gridPos": { "x": 0, "y": 118, "w": 24, "h": 9 },
+          "repeat": "asset",
+          "repeatDirection": "h",
+          "maxPerRow": 2,
+          "interval": "1d",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "decimals": 0,
+              "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never", "fillOpacity": 60, "stacking": { "mode": "normal", "group": "A" } }
+            },
+            "overrides": [
+              { "matcher": { "id": "byName", "options": "Calls" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+              { "matcher": { "id": "byName", "options": "Puts" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] },
+              { "matcher": { "id": "byName", "options": "Other" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "gray" } }] }
+            ]
+          },
+          "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+              "editorMode": "code",
+              "rawQuery": true,
+              "format": 1,
+              "rawSql": "SELECT\n  trad_dt::TIMESTAMP AS time,\n  count(*) FILTER (WHERE option_type = 'CALL') AS \"Calls\",\n  count(*) FILTER (WHERE option_type = 'PUTT') AS \"Puts\",\n  count(*) FILTER (WHERE option_type IS NULL) AS \"Other\"\nFROM read_parquet('s3://uploads/b3_instruments/daily_parse/*.parquet')\nWHERE asset = $asset\n  AND record_type IN ($record_type)\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY time\nORDER BY time"
+            }
+          ]
         }
       ]
     }
