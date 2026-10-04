@@ -1,0 +1,148 @@
+{
+  "uid": "b3-daily-liquidity-limits",
+  "title": "B3 - Daily Liquidity Limits",
+  "tags": ["b3"],
+  "timezone": "America/Sao_Paulo",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "time": { "from": "now-30d/d", "to": "now/d" },
+  "timepicker": {
+    "refresh_intervals": [],
+    "quick_ranges": [
+      { "display": "Today", "from": "now/d", "to": "now/d" },
+      { "display": "Last 7 days", "from": "now-7d/d", "to": "now/d" },
+      { "display": "Last 30 days", "from": "now-30d/d", "to": "now/d" },
+      { "display": "Last 90 days", "from": "now-90d/d", "to": "now/d" },
+      { "display": "Last 6 months", "from": "now-6M/d", "to": "now/d" },
+      { "display": "Last 1 year", "from": "now-1y/d", "to": "now/d" },
+      { "display": "Last 2 years", "from": "now-2y/d", "to": "now/d" },
+      { "display": "Month to date", "from": "now/M", "to": "now/d" },
+      { "display": "Year to date", "from": "now/y", "to": "now/d" }
+    ]
+  },
+  "refresh": "",
+  "templating": {
+    "list": [
+      {
+        "name": "ticker",
+        "label": "Ticker",
+        "type": "query",
+        "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+        "query": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\nWHERE NOT is_unlimited\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "definition": "SELECT DISTINCT ticker\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\nWHERE NOT is_unlimited\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nORDER BY 1",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": false,
+        "current": { "selected": true, "text": ["PETR4", "VALE3"], "value": ["PETR4", "VALE3"] },
+        "sort": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Daily liquidity limit per ticker",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 9 },
+      "interval": "1d",
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "displayName": "${__field.labels.ticker}",
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "transformations": [
+        { "id": "partitionByValues", "options": { "fields": ["ticker"], "keepFields": false, "naming": { "asLabels": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "SELECT trad_dt::TIMESTAMP AS time, ticker, max(liquidity_limit)::BIGINT AS liquidity_limit\nFROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\nWHERE ticker IN ($ticker)\n  AND NOT is_unlimited\n  AND $__timeFilter(trad_dt::TIMESTAMP)\nGROUP BY ALL\nORDER BY time, ticker"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Selected tickers: liquidity limit over the range",
+      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 8 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "_limit$" }, "properties": [{ "id": "unit", "value": "locale" }] },
+          { "matcher": { "id": "byName", "options": "range_change" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE ticker IN ($ticker)\n    AND NOT is_unlimited\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker,\n  instrument_id::VARCHAR AS instrument_id,\n  count(*) AS days,\n  max(trad_dt) AS latest_dt,\n  arg_min(liquidity_limit, trad_dt) AS first_limit,\n  arg_max(liquidity_limit, trad_dt) AS latest_limit,\n  min(liquidity_limit) AS min_limit,\n  max(liquidity_limit) AS max_limit,\n  (arg_max(liquidity_limit, trad_dt) / nullif(arg_min(liquidity_limit, trad_dt), 0) - 1)::DOUBLE AS range_change\nFROM d\nGROUP BY ticker, instrument_id\nORDER BY ticker"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Largest limit changes vs previous day (latest day in range)",
+      "gridPos": { "x": 0, "y": 17, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "_limit$" }, "properties": [{ "id": "unit", "value": "locale" }] },
+          { "matcher": { "id": "byName", "options": "limit_change" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 2 }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n),\ncur AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d)\n),\nprv AS (\n  SELECT * FROM d WHERE trad_dt = (SELECT max(trad_dt) FROM d WHERE trad_dt < (SELECT max(trad_dt) FROM d))\n)\nSELECT c.ticker,\n  c.instrument_id::VARCHAR AS instrument_id,\n  p.liquidity_limit AS prev_limit,\n  c.liquidity_limit AS latest_limit,\n  (c.liquidity_limit / nullif(p.liquidity_limit, 0) - 1)::DOUBLE AS limit_change\nFROM cur c\nJOIN prv p ON c.instrument_id = p.instrument_id\nWHERE c.liquidity_limit <> p.liquidity_limit\nORDER BY abs(c.liquidity_limit / nullif(p.liquidity_limit, 0) - 1) DESC NULLS FIRST, c.ticker\nLIMIT 50"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Largest liquidity limits (latest day in range)",
+      "gridPos": { "x": 12, "y": 17, "w": 12, "h": 12 },
+      "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "liquidity_limit" }, "properties": [{ "id": "unit", "value": "locale" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": 1,
+          "rawSql": "WITH d AS (\n  SELECT *\n  FROM read_parquet('s3://uploads/b3_daily_liquidity_limits/daily_parse/*.parquet')\n  WHERE NOT is_unlimited\n    AND $__timeFilter(trad_dt::TIMESTAMP)\n)\nSELECT ticker,\n  instrument_id::VARCHAR AS instrument_id,\n  liquidity_limit\nFROM d\nWHERE trad_dt = (SELECT max(trad_dt) FROM d)\nORDER BY liquidity_limit DESC, ticker\nLIMIT 50"
+        }
+      ]
+    }
+  ]
+}
