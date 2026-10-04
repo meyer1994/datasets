@@ -159,7 +159,7 @@
       "id": 1,
       "type": "timeseries",
       "title": "Settlement fee per contract by application month (BRL unless noted)",
-      "description": "Settlement fee per contract from the B3 Fee Variables file (BVBG.024.01, `b3_fee_variables/monthly_parse` parquet), plotted as a step line at each publication's validity start date. One series per asset and market; the currency is appended only when it is not BRL. Log scale; filtered by the segment, market and asset variables.",
+      "description": "Settlement fee per contract per asset, by validity month (log scale).",
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -231,7 +231,7 @@
       "id": 2,
       "type": "timeseries",
       "title": "Conversion rates applied, by conversion instrument (sample assets)",
-      "description": "Currency/index conversion rate B3 applies to fee calculations, one step line per conversion instrument ID (highest rate per validity start date). Each series label lists up to 4 of the assets that use that instrument. Log scale; from the Fee Variables parquet, filtered by the segment, market and asset variables.",
+      "description": "Conversion rate per conversion instrument, by validity month (log scale).",
       "gridPos": {
         "x": 0,
         "y": 10,
@@ -304,7 +304,7 @@
       "id": 3,
       "type": "table",
       "title": "Current fee variables (latest publication in range)",
-      "description": "All fee variables per segment, market and asset from the most recent Fee Variables report in the time range: settlement fee, holding fee reduction factor and daily value (with currencies), physical-delivery rate, conversion instrument/rate and the validity window. The latest report is picked before the segment, market and asset filters are applied, so an asset missing from that report shows no row.",
+      "description": "All fee variables from the latest monthly report in range.",
       "gridPos": {
         "x": 0,
         "y": 18,
@@ -353,7 +353,7 @@
       "id": 4,
       "type": "table",
       "title": "Fee variable changes vs previous publication",
-      "description": "Every change in settlement fee, holding reduction factor, holding daily value or physical-delivery rate compared with the previous publication for the same segment, market and asset, with the percent change. Changes are listed if their validity start is in the time range (the previous value may come from before it); newest first, capped at 500 rows, filtered by the segment, market and asset variables.",
+      "description": "Fee variables that changed vs the previous publication.",
       "gridPos": {
         "x": 0,
         "y": 30,
@@ -418,7 +418,7 @@
       "id": 5,
       "type": "barchart",
       "title": "Highest BRL settlement fees per contract (latest publication in range)",
-      "description": "Top 15 asset/market pairs by settlement fee per contract (BRL) in the most recent Fee Variables report in the time range. Fees in other currencies are excluded. Unfiltered top-N: ignores the segment, market and asset variables.",
+      "description": "Top 15 BRL settlement fees in the latest report; ignores the filters.",
       "gridPos": {
         "x": 14,
         "y": 30,

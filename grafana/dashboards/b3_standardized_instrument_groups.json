@@ -44,7 +44,7 @@
       "id": 1,
       "type": "stat",
       "title": "Selected groups (latest day in range)",
-      "description": "Number of instruments and distinct groups among the selected `$group` values on the latest trading day in the time range. Source: the `b3_standardized_instrument_groups/daily_parse` parquet (B3 AgrupamentoInstrumentosPadronizados.txt, one row per instrument per group per day). The latest day is the most recent `trad_dt` that has data for the selected groups.",
+      "description": "Instruments and groups in the selection on the latest day.",
       "gridPos": { "x": 0, "y": 0, "w": 6, "h": 9 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
@@ -74,7 +74,7 @@
       "id": 2,
       "type": "timeseries",
       "title": "Instruments per group per day",
-      "description": "Daily count of instruments (rows) in each selected standardized instrument group, from the `b3_standardized_instrument_groups/daily_parse` parquet. One line per `group_id`; filtered by the `$group` variable and the time range.",
+      "description": "Instruments per selected group per day.",
       "gridPos": { "x": 6, "y": 0, "w": 18, "h": 9 },
       "interval": "1d",
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
@@ -105,7 +105,7 @@
       "id": 3,
       "type": "table",
       "title": "Largest groups (latest day in range)",
-      "description": "Top 20 groups by instrument count on the latest trading day in the time range, with their count on the first day of the range and the change between them. Source: `b3_standardized_instrument_groups/daily_parse` parquet, counted per `group_id` per `trad_dt`. Not filtered by `$group`; only the time range applies.",
+      "description": "Top 20 groups by size on the latest day; ignores the group filter.",
       "gridPos": { "x": 0, "y": 9, "w": 12, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
@@ -130,7 +130,7 @@
       "id": 4,
       "type": "table",
       "title": "Biggest group size changes (first vs latest day in range)",
-      "description": "Top 20 groups ranked by the absolute change in instrument count between the first and latest trading day in the time range, with the percentage change. Source: `b3_standardized_instrument_groups/daily_parse` parquet, counted per `group_id` per `trad_dt`; groups with no change are hidden. Not filtered by `$group`; the percentage is empty for groups that did not exist on the first day.",
+      "description": "Top 20 group size changes between the first and latest day; ignores the group filter.",
       "gridPos": { "x": 12, "y": 9, "w": 12, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
@@ -156,7 +156,7 @@
       "id": 5,
       "type": "table",
       "title": "Instruments added/removed in selected groups (within range)",
-      "description": "Instruments that joined (first seen after the first day of the range) or left (last seen before the latest day) the selected `$group` groups within the time range, with first/last seen dates and the number of sessions present. Source: `b3_standardized_instrument_groups/daily_parse` parquet, keyed by `instrument_id` and `group_id`. An instrument that both joined and left within the range is shown as removed; output is capped at 2000 rows.",
+      "description": "Instruments that joined or left the selected groups within the range.",
       "gridPos": { "x": 0, "y": 21, "w": 24, "h": 12 },
       "datasource": { "type": "motherduck-duckdb-datasource", "uid": "duckdb-minio" },
       "fieldConfig": {
