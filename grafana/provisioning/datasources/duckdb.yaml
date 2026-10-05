@@ -11,11 +11,11 @@ datasources:
         SET home_directory = '/var/lib/grafana';
         INSTALL httpfs;
         LOAD httpfs;
-        CREATE OR REPLACE SECRET minio (
+        CREATE OR REPLACE SECRET rustfs (
           TYPE s3,
           KEY_ID '${AWS_ACCESS_KEY_ID}',
           SECRET '${AWS_SECRET_ACCESS_KEY}',
-          ENDPOINT 'minio:9000',
+          ENDPOINT 'rustfs:9000',
           URL_STYLE 'path',
           USE_SSL false
         );

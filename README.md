@@ -44,7 +44,7 @@ pip install -e ".[dev]"
 
 ### Running Dagster
 
-The whole stack (Postgres, MinIO, Dagster code server / webserver / daemon,
+The whole stack (Postgres, RustFS, Dagster code server / webserver / daemon,
 Grafana, Cloudflare tunnel) runs from `docker-compose.yml`, in dev and in prod.
 The only difference between environments is `.env`:
 
@@ -55,7 +55,7 @@ docker compose up -d --build
 
 Open http://localhost:3000 for Dagster and http://localhost:4000 for Grafana.
 Rebuild (`docker compose up -d --build`) after changing code. Data is kept in the
-`postgres_data`, `minio_data`, `grafana_data` and `dagster_storage` named volumes.
+`postgres_data`, `rustfs_data`, `grafana_data` and `dagster_storage` named volumes.
 Dagster stores runs, event logs and schedules in Postgres (see `dagster.yaml`).
 
 To expose the Dockerized Dagster UI through a Cloudflare Tunnel, create a tunnel in

@@ -14,18 +14,24 @@ services:
       timeout: 5s
       retries: 10
 
-  minio:
-    image: minio/minio:latest
+  rustfs:
+    image: rustfs/rustfs:latest
     env_file: .env
     environment:
-      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID}
-      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY}
+      RUSTFS_ACCESS_KEY: ${AWS_ACCESS_KEY_ID}
+      RUSTFS_SECRET_KEY: ${AWS_SECRET_ACCESS_KEY}
+      RUSTFS_ADDRESS: ':9000'
+      RUSTFS_CONSOLE_ADDRESS: ':9001'
+      RUSTFS_CONSOLE_ENABLE: 'true'
+      RUSTFS_OBS_LOGGER_LEVEL: error
+      RUSTFS_OBS_LOG_DIRECTORY: /logs
     entrypoint:
       - '/bin/sh'
       - '-c'
-      - 'mkdir -p /data/uploads && minio server /data --console-address ":9001"'
+      - 'mkdir -p /data/uploads && exec /entrypoint.sh /data'
     volumes:
-      - minio_data:/data
+      - rustfs_data:/data
+    restart: unless-stopped
 
   dagster-code:
     build:
@@ -39,7 +45,7 @@ services:
     restart: unless-stopped
     depends_on:
       - postgres
-      - minio
+      - rustfs
 
   dagster-webserver:
     build:
@@ -90,10 +96,10 @@ services:
       - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
     depends_on:
-      - minio
+      - rustfs
 
 volumes:
   postgres_data:
-  minio_data:
+  rustfs_data:
   grafana_data:
   dagster_storage:

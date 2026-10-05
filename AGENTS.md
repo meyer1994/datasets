@@ -4,7 +4,7 @@ Dagster project that downloads and parses B3 (Brasil / Bovespa) market-data
 files — daily bulletins from "pesquisa por pregão"
 (`www.b3.com.br/pesquisapregao`) and the historical COTAHIST series
 (`bvmf.bmfbovespa.com.br`) — plus BACEN (Banco Central do Brasil) SGS time
-series. Raw zips are stored in S3-compatible MinIO; parsed results as Parquet;
+series. Raw zips are stored in S3-compatible RustFS; parsed results as Parquet;
 dashboards live in Grafana (DuckDB datasource).
 
 ## Commands
@@ -19,17 +19,18 @@ uv run ruff format .                       # format
 
 - Dev and prod run the same `docker-compose.yml`; only `.env` differs (template:
  `.env.example`). Every service loads it via `env_file`; hostnames in it are the
- compose service names (`postgres`, `minio`). Only `dagster-webserver` (3000)
- and `grafana` (4000 → 3000) publish ports; postgres/minio are internal. Prod
+ compose service names (`postgres`, `rustfs`). Only `dagster-webserver` (3000)
+ and `grafana` (4000 → 3000) publish ports; postgres/rustfs are internal. Prod
  access goes through `cloudflared`.
 - Dagster runs as `dagster-code` (gRPC code server, executes runs),
  `dagster-webserver` and `dagster-daemon`, all from `Dockerfile.dagster`.
  Instance storage (runs, event logs, schedules) is Postgres via
  `dagster-postgres`, configured in `dagster.yaml` from `DAGSTER_PG_*`.
-- Compose data persists in named volumes `postgres_data`, `minio_data`,
+- Compose data persists in named volumes `postgres_data`, `rustfs_data`,
  `grafana_data`, `dagster_storage` (`docker compose down -v` wipes them).
 - Grafana runs the MotherDuck DuckDB datasource plugin; provisioning creates the
-  `minio` S3 secret (env `AWS_*` from `.env`) and auto-imports
+  `rustfs` S3 secret (env `AWS_*` from `.env`; datasource uid is still
+  `duckdb-minio`) and auto-imports
   `grafana/dashboards/*.json` into the `B3` folder.
 - Reference files: `README.md` (getting started), `DATASETS.md` (checklist of
   datasets per source, B3 and BACEN).
@@ -104,7 +105,7 @@ monthly series lag 1–3 months.
 ## Resources (`src/ndagster/defs/resources.py`)
 
 - `io_manager_parquet` — `PolarsParquetIOManager(base_dir="s3://uploads")`
-  (S3/MinIO via `s3fs`).
+  (S3/RustFS via `s3fs`).
 - `io_manager_raw` — `RawFileIOManager` (custom `dg.UPathIOManager` storing raw
   `.zip` bytes at `s3://uploads/raw`).
 
@@ -117,7 +118,7 @@ monthly series lag 1–3 months.
 ├── README.md
 ├── DATASETS.md                  # dataset coverage checklist (B3, BACEN)
 ├── Dockerfile.dagster           # Dagster image (code server, webserver, daemon)
-├── docker-compose.yml           # postgres, minio, dagster-*, cloudflared, grafana
+├── docker-compose.yml           # postgres, rustfs, dagster-*, cloudflared, grafana
 ├── docker/dagster/workspace.yaml # gRPC workspace → dagster-code:4000
 ├── .env                         # all compose config (gitignored; see .env.example)
 ├── dagster.yaml                 # Dagster instance config (Postgres storage)
@@ -125,7 +126,7 @@ monthly series lag 1–3 months.
 ├── grafana/
 │   ├── dashboards/              # 23 JSON dashboards (one per b3_* / bacen_* group)
 │   └── provisioning/
-│       ├── datasources/duckdb.yaml   # DuckDB datasource, minio secret setup
+│       ├── datasources/duckdb.yaml   # DuckDB datasource, rustfs secret setup
 │       └── dashboards/dashboards.yaml # auto-import dashboards into B3 folder
 ├── src/ndagster/
 │   ├── definitions.py           # @definitions entrypoint → load_from_defs_folder
