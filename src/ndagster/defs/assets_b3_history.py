@@ -59,7 +59,7 @@ ORDER BY
 @contextlib.contextmanager
 def database():
     with duckdb.connect() as conn:
-        conn.install_extension("zipfs")
+        conn.install_extension("zipfs", repository="community")
         conn.install_extension("httpfs")
         conn.load_extension("zipfs")
         conn.load_extension("httpfs")
