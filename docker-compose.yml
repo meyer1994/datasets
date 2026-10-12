@@ -79,7 +79,7 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    command: tunnel --no-autoupdate run
+    command: tunnel --no-autoupdate --edge-ip-version 4 --dns-upstream https://1.1.1.1 run
     env_file: .env
     restart: unless-stopped
 
